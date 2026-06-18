@@ -18,7 +18,8 @@ let package = Package(
         // v0.156.2 was the original pin — first release exposing the public
         // Mesh(vertices:normals:indices:) initializer (OCCTSwift#94) that
         // Mesh.simplified(_:) needs to wrap its raw output. v1.0.x preserves it.
-        .package(url: "https://github.com/gsdali/OCCTSwift.git", from: "1.0.1"),
+        // Floored at 1.7.1 for OCCT 8.0.0p1 (redesigned BRepGraph/TopologyGraph).
+        .package(url: "https://github.com/gsdali/OCCTSwift.git", from: "1.7.1"),
     ],
     targets: [
         // Public Swift API: Mesh.simplified(_:) and friends.
