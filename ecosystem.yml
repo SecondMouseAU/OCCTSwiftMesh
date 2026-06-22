@@ -1,0 +1,10 @@
+okf_version: 1
+repo: OCCTSwiftMesh
+cluster: kernel
+visibility: public
+status: active
+language: Swift
+summary: Mesh-domain algorithms (decimation, planar slicing) for the OCCTSwift ecosystem, operating on OCCTSwift.Mesh instances.
+products: []
+depends_on: [OCCTSwift]
+maintainer: gsdali
