@@ -8,7 +8,12 @@ import Foundation
 // so it's independent of build CWD.
 func occtDep(_ name: String, from version: String) -> Package.Dependency {
     let manifestDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
-    if FileManager.default.fileExists(atPath: manifestDir + "/../\(name)/Package.swift") {
+    // Only trust a sibling checkout for a REAL local dev clone — never when this manifest is itself a
+    // transitively-resolved checkout under a consumer's `.build/checkouts/` (SwiftPM lays every dep out
+    // flat there, so `../\(name)` spuriously exists and flips this to a path dep → a SwiftPM identity
+    // conflict with the URL-based dep. See SecondMouseAU/ecosystem#14.
+    if !manifestDir.contains("/.build/"),
+       FileManager.default.fileExists(atPath: manifestDir + "/../\(name)/Package.swift") {
         return .package(path: "../\(name)")
     }
     return .package(url: "https://github.com/SecondMouseAU/\(name).git", from: Version(version)!)
