@@ -6,9 +6,12 @@ import Foundation
 // OCCT ecosystem SHARES the single OCCTSwift/Libraries/OCCT.xcframework instead of each repo
 // extracting its own 1.3 GB copy. CI / fresh clones (no sibling) use the URL pin. `#filePath`-relative
 // so it's independent of build CWD.
+// Guarded against SwiftPM's own checkout layout: a transitively-resolved checkout under a consumer's
+// .build/ must never be treated as a local dev sibling (ecosystem issue OCCTSwiftScripts#69 / #70).
 func occtDep(_ name: String, from version: String) -> Package.Dependency {
     let manifestDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
-    if FileManager.default.fileExists(atPath: manifestDir + "/../\(name)/Package.swift") {
+    if !manifestDir.contains("/.build/"),
+       FileManager.default.fileExists(atPath: manifestDir + "/../\(name)/Package.swift") {
         return .package(path: "../\(name)")
     }
     return .package(url: "https://github.com/SecondMouseAU/\(name).git", from: Version(version)!)
