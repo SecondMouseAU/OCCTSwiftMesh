@@ -1,8 +1,11 @@
 # OCCTSwiftMesh
 
-Mesh-domain algorithms for the [OCCTSwift](https://github.com/gsdali/OCCTSwift) ecosystem. Operates on `OCCTSwift.Mesh` instances; complements the OCCT-side topology kernel rather than extending it.
+[![Swift](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2FSecondMouseAU%2FOCCTSwiftMesh%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/SecondMouseAU/OCCTSwiftMesh)
+[![Platforms](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2FSecondMouseAU%2FOCCTSwiftMesh%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/SecondMouseAU/OCCTSwiftMesh)
 
-Part of the [OCCTSwift ecosystem](https://github.com/gsdali/OCCTSwift/blob/main/docs/ecosystem.md) — see the ecosystem map for how this package fits with the kernel, viewport, and sibling layers.
+Mesh-domain algorithms for the [OCCTSwift](https://github.com/SecondMouseAU/OCCTSwift) ecosystem. Operates on `OCCTSwift.Mesh` instances; complements the OCCT-side topology kernel rather than extending it.
+
+Part of the [OCCTSwift ecosystem](https://github.com/SecondMouseAU/OCCTSwift/blob/main/docs/ecosystem.md) — see the ecosystem map for how this package fits with the kernel, viewport, and sibling layers.
 
 ```
 OCCTSwift           — B-Rep solid modelling kernel (wraps OpenCASCADE)
@@ -67,7 +70,7 @@ let stack = mesh.crossSections(axis: axis, through: p, spacing: 2.0)
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/gsdali/OCCTSwiftMesh.git", from: "1.1.0"),
+    .package(url: "https://github.com/SecondMouseAU/OCCTSwiftMesh.git", from: "1.1.2"),
 ],
 targets: [
     .target(
@@ -98,6 +101,6 @@ Community needs drive priority — file an issue if you want one of these (or so
 
 ## Related projects
 
-- [OCCTSwift](https://github.com/gsdali/OCCTSwift) — OCCT wrapper, source of `Mesh`
-- [OCCTSwiftScripts](https://github.com/gsdali/OCCTSwiftScripts) — script harness; `simplify-mesh` verb consumes this package ([#22](https://github.com/gsdali/OCCTSwiftScripts/issues/22))
-- [OCCTMCP](https://github.com/gsdali/OCCTMCP) — MCP server; `simplify_mesh` tool consumes this package via OCCTSwiftScripts ([#6](https://github.com/gsdali/OCCTMCP/issues/6))
+- [OCCTSwift](https://github.com/SecondMouseAU/OCCTSwift) — OCCT wrapper, source of `Mesh`
+- [OCCTSwiftScripts](https://github.com/SecondMouseAU/OCCTSwiftScripts) — script harness; `simplify-mesh` verb consumes this package ([#22](https://github.com/SecondMouseAU/OCCTSwiftScripts/issues/22))
+- [OCCTMCP](https://github.com/SecondMouseAU/OCCTMCP) — MCP server; `simplify_mesh` tool consumes this package via OCCTSwiftScripts ([#6](https://github.com/SecondMouseAU/OCCTMCP/issues/6))
