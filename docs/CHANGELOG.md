@@ -2,6 +2,10 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## v1.1.3 — repin OCCTSwift 1.12.3 (thread-safe fillet)
+
+Repin the OCCTSwift floor to **1.12.3**, which carries OCCT kernel patch 0003 making 3D fillet/chamfer reentrant across threads ([OCCTSwift#298](https://github.com/SecondMouseAU/OCCTSwift/issues/298) / upstream [OCCT#1374](https://github.com/Open-Cascade-SAS/OCCT/pull/1374)). Ecosystem-wide floor bump; no API or behaviour change.
+
 ## v1.1.0 — `Mesh.crossSection(plane:)` planar slicing
 
 Adds a mesh **slicer**: intersect a mesh with a plane and recover the closed
