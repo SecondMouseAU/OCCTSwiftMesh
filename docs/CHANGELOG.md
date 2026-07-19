@@ -2,6 +2,10 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## v1.1.4 — repin OCCTSwift 1.12.6 (free-bounds crash fix)
+
+Repin the OCCTSwift floor to **1.12.6**, which carries OCCT kernel patch 0004 — `ShapeAnalysis_FreeBounds` no longer returns a null `owires` on empty input, fixing the uncatchable free-bounds SIGSEGV ([OCCTSwift#310](https://github.com/SecondMouseAU/OCCTSwift/issues/310), upstream [OCCT#1377](https://github.com/Open-Cascade-SAS/OCCT/pull/1377)) — on top of the thread-safe-fillet patch (#298). No API or behaviour change.
+
 ## v1.1.3 — repin OCCTSwift 1.12.3 (thread-safe fillet)
 
 Repin the OCCTSwift floor to **1.12.3**, which carries OCCT kernel patch 0003 making 3D fillet/chamfer reentrant across threads ([OCCTSwift#298](https://github.com/SecondMouseAU/OCCTSwift/issues/298) / upstream [OCCT#1374](https://github.com/Open-Cascade-SAS/OCCT/pull/1374)). Ecosystem-wide floor bump; no API or behaviour change.
