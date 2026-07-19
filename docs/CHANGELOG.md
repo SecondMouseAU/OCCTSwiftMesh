@@ -2,6 +2,10 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## v1.1.6 — repin OCCTSwift 1.12.9 (#318 and #323 crash/hang fixes)
+
+Repin the OCCTSwift floor to **1.12.9**, which carries kernel patch 0006 (a `BRepGProp_EdgeTool` null-curve-on-surface guard, [OCCTSwift#318](https://github.com/SecondMouseAU/OCCTSwift/issues/318)) and patches 0007 through 0009 (free-bounds `lwire` reset, boolean-path BSpline O(1) periodic normalization, STEP-writer oversized-string split; [OCCTSwift#323](https://github.com/SecondMouseAU/OCCTSwift/issues/323)), on top of the earlier patches. No API or behaviour change.
+
 ## v1.1.5 — repin OCCTSwift 1.12.7 (ShapeFix_Face null-context crash fix)
 
 Repin the OCCTSwift floor to **1.12.7**, which carries OCCT kernel patch 0005: `ShapeFix_Face::FixPeriodicDegenerated` guards a null `Context()`, fixing the SIGSEGV in [OCCTSwift#317](https://github.com/SecondMouseAU/OCCTSwift/issues/317) (upstream [OCCT#1380](https://github.com/Open-Cascade-SAS/OCCT/pull/1380)), on top of the free-bounds (#310) and fillet (#298) patches. No API or behaviour change.
