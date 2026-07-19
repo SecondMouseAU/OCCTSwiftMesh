@@ -37,7 +37,7 @@ let package = Package(
         // Mesh(vertices:normals:indices:) initializer (OCCTSwift#94) that
         // Mesh.simplified(_:) needs to wrap its raw output. v1.0.x preserves it.
         // Floored at 1.7.1 for OCCT 8.0.0p1 (redesigned BRepGraph/TopologyGraph).
-        occtDep("OCCTSwift", from: "1.12.6"),   // ≥1.12.6: kernel fixes — thread-safe fillet (#298) + free-bounds crash (#310)
+        occtDep("OCCTSwift", from: "1.12.7"),   // ≥1.12.7: kernel crash fixes (fillet #298, free-bounds #310, ShapeFix_Face null-context #317)
     ],
     targets: [
         // Public Swift API: Mesh.simplified(_:) and friends.
