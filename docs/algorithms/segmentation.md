@@ -31,15 +31,29 @@ This is why unwelded input does NOT silently degrade to one region per triangle 
 mode the tracking issue explicitly calls out): adjacency is always computed on welded topology
 regardless of whether the input `Mesh` itself was pre-welded.
 
-## Performance: `bestFit`'s `bodyDiag` is hoisted, not recomputed
+**Unlike `welded(tolerance:)`, `segmented(_:)` does not drop triangles that degenerate (repeat a
+vertex) as a result of the internal weld.** A degenerate triangle still gets a face normal (the
++Z fallback — see `faceNormals()`) and still participates in region-growing / merging like any
+other triangle. On dirty scans this can surface as junk single-triangle regions; the existing
+`SegmentOptions.minRegionTriangles` filter is the mitigation (raise it above 1 to drop them).
 
-The OCCTReconstruct reference recomputes the mesh's bounding-box diagonal inside every
-`PrimitiveFitter.bestFit` call (used for an absolute residual floor). `bestFit` is called once
-per candidate region AND once per candidate merge during the fit-gated pass — recomputing an
-O(vertices) bounds scan on every one of those calls is quadratic-ish at scale. This port hoists
-`bodyDiag` to a single computation in `segmented(_:)`, threaded through as a parameter — the
-same math, computed once. Given the tracking issue's explicit "usable at 400k+ triangles"
-requirement, this isn't optional polish.
+## Performance: `bodyDiag` is hoisted, not recomputed
+
+The OCCTReconstruct reference recomputes the mesh's bounding-box diagonal on every relevant
+call site (used to scale the merge-acceptance tolerance). Doing that on every candidate merge
+during the fit-gated pass would be an O(vertices) bounds scan per call — quadratic-ish at scale.
+This port hoists `bodyDiag` to a single computation in `segmented(_:)`, threaded through
+`RegionMerging.merge` as a parameter for `mergeTol` — the same math, computed once. Given the
+tracking issue's explicit "usable at 400k+ triangles" requirement, this isn't optional polish.
+
+`PrimitiveFitter.bestFit`'s own absolute residual floor (the fit-KIND tie-break, not the merge
+gate above) does NOT use `bodyDiag` — it scales off the REGION's own bounding-box diagonal,
+computed from the region's points directly inside `bestFit`. A body-wide floor was too coarse: a
+shallow, genuinely-curved region on a much larger flat body (issue #20 item 4 — an R5000-class,
+few-mm-sagitta roof panel on a multi-metre body) had its tiny residual swamped by a floor scaled
+to the whole body, so `fit.kind` read `plane` where the surface was really a shallow arc. Region
+MEMBERSHIP was never affected by this (the merge gate above uses residual RMS against `mergeTol`
+only) — only the reported `fit.kind` on the affected region.
 
 ## Scale: coplanar pre-merge before the fit-gated pass
 
@@ -60,6 +74,12 @@ after each merge).
 `SegmentedMesh.truncatedTriangleCount`, rather than silently shrinking the result. This mirrors
 the tracking issue's explicit requirement — a cap that silently drops coverage reads as "fully
 segmented" when it wasn't.
+
+The same ethos applies to the fit-gated merge pass itself: if the coplanar pre-merge can't get
+the raw region count under the internal 1500-region cap, the fit-gated pass is skipped entirely
+rather than silently returning thousands of unmerged confetti regions with no explanation.
+`SegmentedMesh.fitMergeSkipped` reports exactly that — `true` means `regions`/`fits` are the
+pre-merge seed regions, not the fully-merged result.
 
 ## Determinism
 

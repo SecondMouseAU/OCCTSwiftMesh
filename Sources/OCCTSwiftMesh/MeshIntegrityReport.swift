@@ -13,9 +13,19 @@ import Foundation
 import simd
 import OCCTSwift
 
+/// A triangle's welded, sorted vertex-index triple — an exact duplicate-face key at any mesh
+/// size, unlike a bit-packed integer key (which needs per-field bit budgets that cap the exact
+/// vertex-count range).
+private struct FaceKey: Hashable {
+    let a, b, c: UInt32
+}
+
 /// A mesh's manifoldness, validity, and quality snapshot.
 public struct MeshIntegrityReport: Sendable {
-    /// Every welded edge is shared by exactly two triangles (no boundary, no non-manifold edges).
+    /// Every welded edge is shared by exactly two triangles (no boundary, no non-manifold
+    /// edges), AND every vertex is manifold (no pinch points) — matching Open3D's
+    /// `is_watertight`, which folds vertex-manifoldness in too (`nonManifoldVertexCount == 0`
+    /// is necessary, not just edge-manifoldness).
     public let isWatertight: Bool
     /// Every 2-triangle welded edge is traversed in opposite directions by its two triangles —
     /// a consistent winding exists. Only evaluated over 2-triangle edges; not meaningful when
@@ -70,7 +80,7 @@ extension Mesh {
 
         var degenerateCount = 0
         var duplicateCount = 0
-        var seenFaces = Set<UInt64>()
+        var seenFaces = Set<FaceKey>()
         var cleanIndices: [UInt32] = []
         cleanIndices.reserveCapacity(idx0.count)
         for t in 0..<tc0 {
@@ -78,7 +88,7 @@ extension Mesh {
             let a = remap[Int(idx0[base])], b = remap[Int(idx0[base + 1])], c = remap[Int(idx0[base + 2])]
             if a == b || b == c || a == c { degenerateCount += 1; continue }
             let s = [a, b, c].sorted()
-            let key = (UInt64(s[0]) << 42) ^ (UInt64(s[1]) << 21) ^ UInt64(s[2])
+            let key = FaceKey(a: s[0], b: s[1], c: s[2])
             if !seenFaces.insert(key).inserted { duplicateCount += 1; continue }
             cleanIndices.append(a); cleanIndices.append(b); cleanIndices.append(c)
         }
@@ -115,7 +125,6 @@ extension Mesh {
         }
         let nonManifoldEdgeCount = edgeCount.values.filter { $0 >= 3 }.count
         let boundaryEdgeCount = edgeCount.values.filter { $0 == 1 }.count
-        let isWatertight = boundaryEdgeCount == 0 && nonManifoldEdgeCount == 0
 
         var isOrientable = true
         for (key, cnt) in edgeCount where cnt == 2 {
@@ -124,6 +133,9 @@ extension Mesh {
         }
 
         let nonManifoldVertexCount = Mesh.countNonManifoldVertices(indices: cIdx)
+        // Edge-manifold alone isn't enough: two closed shells pinched at one shared vertex have
+        // zero boundary/non-manifold EDGES but are not a single watertight fan at that vertex.
+        let isWatertight = boundaryEdgeCount == 0 && nonManifoldEdgeCount == 0 && nonManifoldVertexCount == 0
         let boundaryLoopCount = clean.boundaryLoops().count
         let components = clean.connectedComponents().map { (triangleCount: $0.triangleIndices.count, area: $0.area) }
 

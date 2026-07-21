@@ -10,11 +10,9 @@ enum PrimitiveFitter {
 
     /// Fit the best primitive (lowest residual, with a simplicity bias toward planes) to a
     /// region. `vertices`/`indices` should be the mesh's ORIGINAL (unwelded) arrays — fitting
-    /// wants the truest available geometry, unperturbed by weld snapping. `bodyDiag` is the
-    /// whole mesh's bounding-box diagonal, precomputed once by the caller (fitting runs once
-    /// per candidate merge, so rescanning bounds per call would be quadratic at scale).
+    /// wants the truest available geometry, unperturbed by weld snapping.
     static func bestFit(vertices: [SIMD3<Float>], indices: [UInt32], region: MeshRegion,
-                        faceNormals: [SIMD3<Float>], bodyDiag: Double) -> FittedPrimitive {
+                        faceNormals: [SIMD3<Float>]) -> FittedPrimitive {
         let pts = regionPoints(vertices: vertices, indices: indices, region: region)
         let normals = region.triangleIndices.map { SIMD3<Double>(faceNormals[$0]) }
 
@@ -41,8 +39,14 @@ enum PrimitiveFitter {
         // primitive (plane > cylinder > cone > sphere) — this breaks ambiguous ties (e.g. a
         // short band a sphere also fits perfectly is really a cylinder). The absolute floor
         // matters: when the best fit is near-zero, a near-perfect cone must still count as
-        // "acceptable" against an exact sphere.
-        let absFloor = 1e-3 * bodyDiag
+        // "acceptable" against an exact sphere. Scaled by the REGION's own bounding-box
+        // diagonal, not the whole mesh's — a floor scaled by a large body would swamp a small,
+        // genuinely-curved region's tiny residual and misclassify a shallow arc as a plane
+        // (issue #20 item 4: a big flat body with an R5000-class, few-mm-sagitta roof).
+        var lo = pts.first ?? .zero, hi = pts.first ?? .zero
+        for p in pts { lo = simd_min(lo, p); hi = simd_max(hi, p) }
+        let regionDiag = simd_length(hi - lo)
+        let absFloor = 1e-3 * regionDiag
         let preference: [FittedPrimitive.Kind: Int] = [.plane: 0, .cylinder: 1, .cone: 2, .sphere: 3]
         let acceptable = candidates.filter { $0.residualRMS <= bestRMS * 1.25 + absFloor }
         return acceptable.min { (preference[$0.kind] ?? 9) < (preference[$1.kind] ?? 9) }!

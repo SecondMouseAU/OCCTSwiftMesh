@@ -100,6 +100,8 @@ for (region, fit) in zip(segmented.regions, segmented.fits) {
     print(region.triangleIndices.count, "triangles →", fit.kind, fit.residualRMS)
 }
 // segmented.truncatedTriangleCount reports anything dropped by maxRegions / minRegionTriangles —
+// never silent. segmented.fitMergeSkipped reports when the fit-gated merge pass itself couldn't
+// run (raw region count still over an internal cap after the cheap coplanar pre-merge) — also
 // never silent.
 ```
 

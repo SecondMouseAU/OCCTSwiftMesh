@@ -50,6 +50,10 @@ on the deduplicated, non-degenerate topology instead, so a handful of exact dupl
 doesn't masquerade as a real non-manifold defect (a duplicated triangle trivially makes its three
 edges non-manifold — that's noise, not signal).
 
+The duplicate-face check keys each triangle on its sorted, welded vertex-index triple (three
+`UInt32`s) rather than bit-packing them into one integer — exact at any welded-vertex count,
+with no field-width ceiling to document or hit.
+
 Semantics follow the [Open3D `TriangleMesh`](https://www.open3d.org/docs/release/tutorial/geometry/mesh.html)
 conventions (`is_edge_manifold` / `is_vertex_manifold` / `is_watertight` /
 `cluster_connected_triangles`) — the cleanest in the field per the tracking issue.
@@ -63,6 +67,16 @@ branch point (an opposite-edge endpoint touched by 3+ opposite edges) or a secon
 chain (a pinch point / bowtie, two cones of triangles touching at exactly one vertex) makes `v`
 non-manifold. Implemented by building the per-vertex "opposite edge" graph and checking max
 degree ≤ 2 and exactly one connected component.
+
+### `isWatertight` folds in vertex-manifoldness
+
+`isWatertight` requires `nonManifoldVertexCount == 0` in addition to zero boundary and zero
+non-manifold edges — matching Open3D's actual `is_watertight` definition (edge-manifold AND
+vertex-manifold AND no boundary), not just the edge-manifold half of it. Edge-manifoldness alone
+misses a real defect: two otherwise-closed shells pinched together at a single shared vertex (a
+"bowtie" of closed shells) have zero boundary edges and zero non-manifold edges — every edge is
+still shared by exactly two triangles — but the pinch vertex is not a single triangle fan, so the
+result is not a single watertight solid.
 
 ### Genus
 

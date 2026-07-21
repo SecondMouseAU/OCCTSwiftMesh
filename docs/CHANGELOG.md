@@ -2,6 +2,35 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## Unreleased
+
+Follow-ups from the v1.2.0 (#19) review, tracked in [#20](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/20). None affect the correctness of what shipped in v1.2.0; two are behavior fixes, the rest are diagnostics/docs/tests.
+
+- **`SegmentedMesh.fitMergeSkipped: Bool`** (new field) — `true` when even the coplanar
+  pre-merge couldn't get the raw region count under the internal 1500-region cap, so the
+  fit-gated merge pass was skipped entirely; `regions`/`fits` are then the unmerged seed regions.
+  Previously silent — the caller saw thousands of "confetti" regions with no indication why.
+- **`MeshIntegrityReport.isWatertight` now folds in vertex-manifoldness** (behavior fix):
+  requires `nonManifoldVertexCount == 0` in addition to zero boundary/non-manifold edges, matching
+  Open3D's actual `is_watertight` definition. Previously, two closed shells pinched at one shared
+  vertex (a bowtie of closed shells) reported watertight, since neither shell has a boundary or
+  non-manifold edge.
+- **`integrityReport()`'s duplicate-face key is now exact at any welded-vertex count** — replaced
+  a bit-packed `UInt64` key (three 21-bit fields, exact only below ~2M welded vertices) with a
+  3-field `UInt32` struct key.
+- **`PrimitiveFitter.bestFit`'s fit-kind tie-break floor now scales with the REGION's own
+  bounding-box diagonal, not the whole mesh's** (behavior fix, `bodyDiag` dropped from `bestFit`'s
+  signature) — a body-wide floor could swamp a small, genuinely-curved region's tiny residual on
+  a much larger body (an R5000-class, few-mm-sagitta roof panel on a multi-metre body), reporting
+  `fit.kind == .plane` where the surface was really a shallow arc. Region membership was never
+  affected; only the reported `fit.kind` on the affected region.
+- `docs/algorithms/segmentation.md` now documents that `segmented(_:)`, unlike `welded(_:)`, does
+  not drop triangles that degenerate as a result of the internal weld (mitigated by
+  `SegmentOptions.minRegionTriangles`).
+- New test fixtures/coverage: an inconsistent-winding (`isOrientable == false`) fixture, a torus
+  (genus 1) fixture, and an unwelded curved-body segmentation case (previously only the box was
+  tested unwelded).
+
 ## v1.2.0 — mesh foundations + region segmentation
 
 Adds the mesh connectivity toolkit ([#16](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/16))

@@ -165,3 +165,104 @@ func duplicateAndDegenerateFixture() -> Mesh {
     let indices: [UInt32] = [0, 1, 2, 0, 1, 2, 0, 3, 1]
     return Mesh(vertices: p, indices: indices)!
 }
+
+/// Two closed, watertight, orientable tetrahedra pinched together at exactly one shared vertex
+/// (a bowtie of closed shells, not just two open triangles) — every welded edge is still
+/// shared by exactly two triangles (no boundary, no non-manifold edge), so an edge-manifold-only
+/// watertight check reports this watertight; the shared apex is a non-manifold VERTEX (two
+/// disjoint triangle fans meeting at one point), which is the case `isWatertight` must catch.
+func bowtiePinchedClosedShellsFixture() -> Mesh {
+    let p: [SIMD3<Float>] = [
+        SIMD3(0, 0, 0),                                            // 0: shared apex
+        SIMD3(1, 0, 0), SIMD3(0, 1, 0), SIMD3(0, 0, 1),             // 1-3: shell A's other verts
+        SIMD3(10, 0, 0), SIMD3(0, 10, 0), SIMD3(0, 0, 10),          // 4-6: shell B's other verts
+    ]
+    let a: [UInt32] = [0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3]
+    let b: [UInt32] = [0, 5, 4, 0, 4, 6, 0, 6, 5, 4, 5, 6]
+    return Mesh(vertices: p, indices: a + b)!
+}
+
+/// The same tetrahedron as `orientableTetrahedronMesh()`, but one face's winding is flipped —
+/// a shared edge is now traversed in the SAME direction by both its triangles instead of
+/// opposite directions, breaking the consistent orientation `isOrientable` checks for.
+func nonOrientableTetrahedronMesh() -> Mesh {
+    let p: [SIMD3<Float>] = [SIMD3(0, 0, 0), SIMD3(1, 0, 0), SIMD3(0, 1, 0), SIMD3(0, 0, 1)]
+    let indices: [UInt32] = [0, 2, 1, 0, 1, 3, 0, 2, 3, 1, 2, 3]   // 3rd face flipped: 0,3,2 -> 0,2,3
+    return Mesh(vertices: p, indices: indices)!
+}
+
+/// Duplicates every triangle's vertices into fresh, per-triangle-unique slots — the fully-
+/// unshared "soup" form raw OCCT tessellation / STL import produces. Geometrically identical to
+/// `mesh`; welding should collapse it back. A generic counterpart to `unweldedUnitCube()` for
+/// meshes built elsewhere (e.g. `coarseCappedCylinderMesh()`), for exercising the internal-weld
+/// path on a curved body, not just a box.
+func unwelded(_ mesh: Mesh) -> Mesh {
+    let verts = mesh.vertices
+    let idx = mesh.indices
+    var positions: [SIMD3<Float>] = []
+    var indices: [UInt32] = []
+    positions.reserveCapacity(idx.count)
+    indices.reserveCapacity(idx.count)
+    for i in idx {
+        indices.append(UInt32(positions.count))
+        positions.append(verts[Int(i)])
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}
+
+/// A closed, watertight, orientable torus (genus 1) — a structured (major × minor) grid with
+/// both directions wrapped, triangulated with a uniform diagonal split per quad so winding stays
+/// consistent everywhere. Welded by construction (shared ring vertices).
+func torusMesh(majorRadius R: Float = 5, minorRadius r: Float = 1.5,
+               majorSegments: Int = 12, minorSegments: Int = 8) -> Mesh {
+    var positions: [SIMD3<Float>] = []
+    for i in 0..<majorSegments {
+        let u = Float(i) / Float(majorSegments) * 2 * .pi
+        for j in 0..<minorSegments {
+            let v = Float(j) / Float(minorSegments) * 2 * .pi
+            let x = (R + r * cos(v)) * cos(u)
+            let y = (R + r * cos(v)) * sin(u)
+            let z = r * sin(v)
+            positions.append(SIMD3(x, y, z))
+        }
+    }
+    func vertexIndex(_ i: Int, _ j: Int) -> UInt32 {
+        UInt32(((i + majorSegments) % majorSegments) * minorSegments + ((j + minorSegments) % minorSegments))
+    }
+    var indices: [UInt32] = []
+    for i in 0..<majorSegments {
+        for j in 0..<minorSegments {
+            let a = vertexIndex(i, j), b = vertexIndex(i + 1, j)
+            let c = vertexIndex(i, j + 1), d = vertexIndex(i + 1, j + 1)
+            indices.append(contentsOf: [a, b, d, a, d, c])
+        }
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}
+
+/// A shallow cylindrical arc strip — the kiha40-roof scenario from issue #20 item 4: a big
+/// radius (default 500) swept over a small angular span, so the surface deviates from its
+/// best-fit plane by only a modest sagitta relative to the strip's own footprint. Welded by
+/// construction (shared ring vertices), one connected patch.
+func shallowCylindricalArcMesh(radius: Float = 500, widthUnits: Float = 200, axialUnits: Float = 200,
+                               sides: Int = 10, rings: Int = 6) -> Mesh {
+    let angularSpan = widthUnits / radius
+    var positions: [SIMD3<Float>] = []
+    for k in 0..<rings {
+        let z = Float(k) / Float(rings - 1) * axialUnits
+        for i in 0..<sides {
+            let a = Float(i) / Float(sides - 1) * angularSpan
+            positions.append(SIMD3(radius * cos(a), radius * sin(a), z))
+        }
+    }
+    var indices: [UInt32] = []
+    for k in 0..<(rings - 1) {
+        let lo = UInt32(k * sides), hi = UInt32((k + 1) * sides)
+        for i in 0..<(sides - 1) {
+            let a = lo + UInt32(i), b = lo + UInt32(i + 1)
+            let c = hi + UInt32(i), d = hi + UInt32(i + 1)
+            indices.append(contentsOf: [a, b, c, b, d, c])
+        }
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}

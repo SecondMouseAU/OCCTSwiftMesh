@@ -221,6 +221,36 @@ struct IntegrityReportTests {
         #expect(report.nonManifoldVertexCount == 1)
     }
 
+    @Test("Two closed shells pinched at one shared vertex are NOT watertight, despite every edge being manifold")
+    func pinchedClosedShellsAreNotWatertight() {
+        // Regression for issue #20 item 2: isWatertight must fold in vertex-manifoldness (per
+        // the cited Open3D convention) — an edge-manifold-only check would report this fixture
+        // watertight, since neither shell has a boundary or non-manifold edge.
+        let report = bowtiePinchedClosedShellsFixture().integrityReport()
+        #expect(report.nonManifoldEdgeCount == 0)
+        #expect(report.boundaryLoopCount == 0)
+        #expect(report.nonManifoldVertexCount == 1)
+        #expect(!report.isWatertight)
+    }
+
+    @Test("Inconsistent winding across a shared edge is reported as non-orientable")
+    func nonOrientableReport() {
+        let report = nonOrientableTetrahedronMesh().integrityReport()
+        #expect(report.isWatertight)
+        #expect(!report.isOrientable)
+        #expect(report.genus == nil)
+    }
+
+    @Test("A torus (genus 1) reports Euler characteristic 0 and genus 1")
+    func torusReport() {
+        let report = torusMesh().integrityReport()
+        #expect(report.isWatertight)
+        #expect(report.isOrientable)
+        #expect(report.eulerCharacteristic == 0)
+        #expect(report.genus == 1)
+        #expect(report.components.count == 1)
+    }
+
     @Test("Duplicate and degenerate triangles are counted from the raw topology")
     func duplicateAndDegenerateReport() {
         let report = duplicateAndDegenerateFixture().integrityReport()

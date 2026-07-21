@@ -49,7 +49,7 @@ extension Mesh {
             .map { MeshRegion(triangleIndices: $0, area: Mesh.area(ofTriangles: $0, vertices: verts, indices: idx)) }
             .sorted(by: MeshRegion.order)
 
-        let (mergedRegions, fits) = RegionMerging.merge(
+        let (mergedRegions, fits, fitMergeSkipped) = RegionMerging.merge(
             vertices: verts, indices: idx, regions: seeds, faceNormals: normals, adjacency: adjacency,
             bodyDiag: bodyDiag, relativeTolerance: options.mergeRelativeTolerance,
             maxMergeAngleDegrees: options.maxMergeAngleDegrees)
@@ -74,7 +74,8 @@ extension Mesh {
             }
         }
 
-        return SegmentedMesh(regions: filteredRegions, fits: filteredFits, truncatedTriangleCount: dropped)
+        return SegmentedMesh(regions: filteredRegions, fits: filteredFits, truncatedTriangleCount: dropped,
+                            fitMergeSkipped: fitMergeSkipped)
     }
 
     /// Deterministic DFS flood over edge-adjacent triangles, absorbing an unassigned neighbour
@@ -117,12 +118,16 @@ extension Mesh {
 /// Agglomerative region merging that repairs coarse-tessellation shattering.
 enum RegionMerging {
 
-    /// Merge regions by primitive fit. Returns the merged regions (largest-first) and each
-    /// merged region's best fit.
+    /// Merge regions by primitive fit. Returns the merged regions (largest-first), each merged
+    /// region's best fit, and whether the fit-gated pass itself ran at all — `fitMergeSkipped`
+    /// is `true` when even the coplanar pre-merge couldn't get the region count under
+    /// `maxRegionsToMerge`, in which case `regions`/`fits` are the pre-merge seed regions,
+    /// unmerged by primitive fit.
     static func merge(vertices: [SIMD3<Float>], indices: [UInt32], regions inputRegions: [MeshRegion],
                       faceNormals: [SIMD3<Float>], adjacency: [[Int]], bodyDiag: Double,
                       relativeTolerance: Double, maxMergeAngleDegrees: Float,
-                      maxRegionsToMerge: Int = 1500) -> (regions: [MeshRegion], fits: [FittedPrimitive]) {
+                      maxRegionsToMerge: Int = 1500)
+        -> (regions: [MeshRegion], fits: [FittedPrimitive], fitMergeSkipped: Bool) {
         var regions = inputRegions
         // Cheap coplanar pre-merge keeps the fit-gated pass below usable at 400k+ triangle
         // scans, where raw region counts can run into the thousands: a tight (~2°) coplanar
@@ -136,9 +141,11 @@ enum RegionMerging {
         guard n > 1, n <= maxRegionsToMerge else {
             let fits = regions.map {
                 PrimitiveFitter.bestFit(vertices: vertices, indices: indices, region: $0,
-                                       faceNormals: faceNormals, bodyDiag: bodyDiag)
+                                       faceNormals: faceNormals)
             }
-            return (regions, fits)
+            // n <= 1 (nothing left to merge) is not a skip — only report skipped when the
+            // fit-gated pass was bypassed because the region count is still over the cap.
+            return (regions, fits, n > maxRegionsToMerge)
         }
 
         let mergeTol = max(relativeTolerance * bodyDiag, 1e-6)
@@ -178,7 +185,7 @@ enum RegionMerging {
         var members = regions.map { $0.triangleIndices }
         var rootFit = regions.map {
             PrimitiveFitter.bestFit(vertices: vertices, indices: indices, region: $0,
-                                   faceNormals: faceNormals, bodyDiag: bodyDiag)
+                                   faceNormals: faceNormals)
         }
         func find(_ x: Int) -> Int { var r = x; while parent[r] != r { parent[r] = parent[parent[r]]; r = parent[r] }; return r }
 
@@ -193,7 +200,7 @@ enum RegionMerging {
                 let unionArea = Mesh.area(ofTriangles: union, vertices: vertices, indices: indices)
                 let fit = PrimitiveFitter.bestFit(vertices: vertices, indices: indices,
                                                  region: MeshRegion(triangleIndices: union, area: unionArea),
-                                                 faceNormals: faceNormals, bodyDiag: bodyDiag)
+                                                 faceNormals: faceNormals)
                 let separateBest = min(rootFit[a].residualRMS, rootFit[b].residualRMS)
                 guard fit.residualRMS <= mergeTol, fit.residualRMS <= separateBest + slack else { continue }
                 parent[b] = a
@@ -210,7 +217,7 @@ enum RegionMerging {
             pairs.append((MeshRegion(triangleIndices: members[r], area: area), rootFit[r]))
         }
         pairs.sort { MeshRegion.order($0.0, $1.0) }
-        return (pairs.map { $0.0 }, pairs.map { $0.1 })
+        return (pairs.map { $0.0 }, pairs.map { $0.1 }, false)
     }
 
     /// Cheap, fit-free pre-pass: union-find adjacent regions whose shared boundary is nearly

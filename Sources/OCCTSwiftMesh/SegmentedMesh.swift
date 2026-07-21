@@ -11,9 +11,18 @@ public struct SegmentedMesh: Sendable {
     /// `SegmentOptions.minRegionTriangles`. `0` when nothing was truncated.
     public let truncatedTriangleCount: Int
 
-    public init(regions: [MeshRegion], fits: [FittedPrimitive], truncatedTriangleCount: Int) {
+    /// `true` when the coplanar pre-merge alone couldn't get the raw region count under the
+    /// internal fit-gated-merge cap, so the primitive-fit merge pass was skipped entirely —
+    /// `regions`/`fits` are the UNMERGED seed regions from dihedral growing (plus coplanar
+    /// pre-merge), not the fully-merged result. Coarse-tessellation "confetti" will not have
+    /// been collapsed. `false` in the normal case where the fit-gated pass ran.
+    public let fitMergeSkipped: Bool
+
+    public init(regions: [MeshRegion], fits: [FittedPrimitive], truncatedTriangleCount: Int,
+                fitMergeSkipped: Bool = false) {
         self.regions = regions
         self.fits = fits
         self.truncatedTriangleCount = truncatedTriangleCount
+        self.fitMergeSkipped = fitMergeSkipped
     }
 }
