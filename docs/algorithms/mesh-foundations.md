@@ -72,7 +72,9 @@ degree ≤ 2 and exactly one connected component.
 
 `isWatertight` requires `nonManifoldVertexCount == 0` in addition to zero boundary and zero
 non-manifold edges — matching Open3D's actual `is_watertight` definition (edge-manifold AND
-vertex-manifold AND no boundary), not just the edge-manifold half of it. Edge-manifoldness alone
+vertex-manifold AND no boundary), not just the edge-manifold half of it — with one caveat:
+Open3D's check also excludes self-intersecting meshes, and this package doesn't detect
+self-intersection, so a self-intersecting closed manifold still reports watertight here. Edge-manifoldness alone
 misses a real defect: two otherwise-closed shells pinched together at a single shared vertex (a
 "bowtie" of closed shells) have zero boundary edges and zero non-manifold edges — every edge is
 still shared by exactly two triangles — but the pinch vertex is not a single triangle fan, so the

@@ -16,5 +16,5 @@
 /// to attach the module's documentation to.
 public enum OCCTSwiftMesh {
     /// Package version. Bump on each tagged release.
-    public static let version = "1.2.0"
+    public static let version = "1.3.0"
 }

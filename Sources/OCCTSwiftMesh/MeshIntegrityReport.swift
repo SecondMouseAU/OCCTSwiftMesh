@@ -25,7 +25,9 @@ public struct MeshIntegrityReport: Sendable {
     /// Every welded edge is shared by exactly two triangles (no boundary, no non-manifold
     /// edges), AND every vertex is manifold (no pinch points) — matching Open3D's
     /// `is_watertight`, which folds vertex-manifoldness in too (`nonManifoldVertexCount == 0`
-    /// is necessary, not just edge-manifoldness).
+    /// is necessary, not just edge-manifoldness) — minus Open3D's self-intersection clause:
+    /// this package doesn't detect self-intersections, so a self-intersecting closed manifold
+    /// still reports watertight here.
     public let isWatertight: Bool
     /// Every 2-triangle welded edge is traversed in opposite directions by its two triangles —
     /// a consistent winding exists. Only evaluated over 2-triangle edges; not meaningful when

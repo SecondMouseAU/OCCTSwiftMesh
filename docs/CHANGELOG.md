@@ -2,7 +2,7 @@
 
 All notable changes to OCCTSwiftMesh.
 
-## Unreleased
+## v1.3.0 — #19 review follow-ups (fitMergeSkipped, isWatertight, region-local fit floor)
 
 Follow-ups from the v1.2.0 (#19) review, tracked in [#20](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/20). None affect the correctness of what shipped in v1.2.0; two are behavior fixes, the rest are diagnostics/docs/tests.
 
