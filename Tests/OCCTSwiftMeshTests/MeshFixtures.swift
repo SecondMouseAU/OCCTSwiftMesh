@@ -266,3 +266,100 @@ func shallowCylindricalArcMesh(radius: Float = 500, widthUnits: Float = 200, axi
     }
     return Mesh(vertices: positions, indices: indices)!
 }
+
+/// An open cylindrical shell (no end caps) with multiple axial rings — unlike
+/// `openCylinderShellMesh`'s fixed 2 rings (every vertex a boundary vertex), interior rings here
+/// are away from the top/bottom open edges and get a complete triangle fan. Welded by
+/// construction (shared ring vertices); axis is +Z.
+func openCylinderMultiRingMesh(radius: Float = 6, height: Float = 20, segments: Int = 24, rings: Int = 8) -> Mesh {
+    var positions: [SIMD3<Float>] = []
+    for k in 0..<rings {
+        let z = Float(k) / Float(rings - 1) * height
+        for i in 0..<segments {
+            let a = Float(i) / Float(segments) * 2 * .pi
+            positions.append(SIMD3(radius * cos(a), radius * sin(a), z))
+        }
+    }
+    var indices: [UInt32] = []
+    for k in 0..<(rings - 1) {
+        let lo = UInt32(k * segments), hi = UInt32((k + 1) * segments)
+        for i in 0..<segments {
+            let a = lo + UInt32(i), b = lo + UInt32((i + 1) % segments)
+            let c = hi + UInt32(i), d = hi + UInt32((i + 1) % segments)
+            indices.append(contentsOf: [a, b, c, b, d, c])
+        }
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}
+
+/// An open "zone" cut from a sphere (a latitude band, no pole caps) — wrapped in longitude, open
+/// top/bottom in latitude. Avoids the pole singularity a full UV-sphere would introduce, so every
+/// interior vertex has the same well-defined analytic curvature (`k1 == k2 == 1/radius`). Welded
+/// by construction (shared ring vertices in longitude).
+func sphereZoneMesh(radius: Float = 10, latitudeSpanDegrees: Float = 60, segments: Int = 24, rings: Int = 10) -> Mesh {
+    var positions: [SIMD3<Float>] = []
+    let halfSpan = latitudeSpanDegrees * .pi / 180 / 2
+    for k in 0..<rings {
+        let lat = -halfSpan + Float(k) / Float(rings - 1) * (2 * halfSpan)
+        for i in 0..<segments {
+            let lon = Float(i) / Float(segments) * 2 * .pi
+            let x = radius * cos(lat) * cos(lon)
+            let y = radius * cos(lat) * sin(lon)
+            let z = radius * sin(lat)
+            positions.append(SIMD3(x, y, z))
+        }
+    }
+    var indices: [UInt32] = []
+    for k in 0..<(rings - 1) {
+        let lo = UInt32(k * segments), hi = UInt32((k + 1) * segments)
+        for i in 0..<segments {
+            let a = lo + UInt32(i), b = lo + UInt32((i + 1) % segments)
+            let c = hi + UInt32(i), d = hi + UInt32((i + 1) % segments)
+            indices.append(contentsOf: [a, b, c, b, d, c])
+        }
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}
+
+/// `sphereZoneMesh()` with one extra degenerate SLIVER triangle glued onto the edge between
+/// vertices 0 and 1 (a needle: two shared existing vertices plus one new vertex placed almost
+/// exactly on the line between them) — for exercising `vertexCurvatures()`'s sliver-exclusion
+/// guard without perturbing the rest of the mesh's analytic curvature.
+func sphereZoneMeshWithSliver(radius: Float = 10, latitudeSpanDegrees: Float = 60, segments: Int = 24, rings: Int = 10) -> Mesh {
+    let base = sphereZoneMesh(radius: radius, latitudeSpanDegrees: latitudeSpanDegrees, segments: segments, rings: rings)
+    var positions = base.vertices
+    var indices = base.indices
+    let a = positions[0], b = positions[1]
+    let ab = b - a
+    let helper: SIMD3<Float> = abs(ab.x) < abs(ab.y) ? SIMD3(1, 0, 0) : SIMD3(0, 1, 0)
+    let perpDir = simd_normalize(simd_cross(ab, helper))
+    let sliverApex = (a + b) * 0.5 + perpDir * (simd_length(ab) * 1e-5)
+    let newIndex = UInt32(positions.count)
+    positions.append(sliverApex)
+    indices.append(contentsOf: [0, 1, newIndex])
+    return Mesh(vertices: positions, indices: indices)!
+}
+
+/// A flat rectangular grid in the XY plane (`z == 0`) — the trivial curvature case:
+/// `k1 == k2 == 0` everywhere, including at boundary vertices (flat is flat regardless of an
+/// incomplete triangle fan). Welded by construction (shared grid vertices).
+func flatGridMesh(width: Float = 20, depth: Float = 20, segmentsX: Int = 10, segmentsY: Int = 10) -> Mesh {
+    var positions: [SIMD3<Float>] = []
+    for j in 0...segmentsY {
+        let y = Float(j) / Float(segmentsY) * depth
+        for i in 0...segmentsX {
+            let x = Float(i) / Float(segmentsX) * width
+            positions.append(SIMD3(x, y, 0))
+        }
+    }
+    let cols = segmentsX + 1
+    var indices: [UInt32] = []
+    for j in 0..<segmentsY {
+        for i in 0..<segmentsX {
+            let a = UInt32(j * cols + i), b = UInt32(j * cols + i + 1)
+            let c = UInt32((j + 1) * cols + i), d = UInt32((j + 1) * cols + i + 1)
+            indices.append(contentsOf: [a, b, d, a, d, c])
+        }
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}

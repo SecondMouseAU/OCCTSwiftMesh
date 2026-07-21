@@ -8,6 +8,8 @@
 //   .integrityReport() — the mesh connectivity toolkit and quality/validity snapshot.
 // Mesh.segmented(_:) — dihedral region-growing + primitive-fit merge, splitting a mesh
 //   into plane/cylinder/sphere/cone surface regions.
+// Mesh.vertexCurvatures() — per-vertex principal curvatures/directions (Rusinkiewicz
+//   per-face tensor method).
 // See docs/CHANGELOG.md and docs/algorithms/.
 
 /// Namespace marker for the OCCTSwiftMesh module. The public surface lives
@@ -16,5 +18,5 @@
 /// to attach the module's documentation to.
 public enum OCCTSwiftMesh {
     /// Package version. Bump on each tagged release.
-    public static let version = "1.3.0"
+    public static let version = "1.4.0"
 }
