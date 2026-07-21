@@ -10,6 +10,8 @@
 //   into plane/cylinder/sphere/cone surface regions.
 // Mesh.aligned(to:options:) — point-to-plane ICP registration (PCA pre-align +
 //   normal-space sampling + trimmed correspondence).
+// Mesh.vertexCurvatures() — per-vertex principal curvatures/directions (Rusinkiewicz
+//   per-face tensor method).
 // See docs/CHANGELOG.md and docs/algorithms/.
 
 /// Namespace marker for the OCCTSwiftMesh module. The public surface lives
@@ -18,5 +20,5 @@
 /// to attach the module's documentation to.
 public enum OCCTSwiftMesh {
     /// Package version. Bump on each tagged release.
-    public static let version = "1.4.0"
+    public static let version = "1.5.0"
 }

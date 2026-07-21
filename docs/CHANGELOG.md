@@ -2,7 +2,7 @@
 
 All notable changes to OCCTSwiftMesh.
 
-## v1.4.0 — point-to-plane ICP alignment
+## v1.5.0 — point-to-plane ICP alignment
 
 Adds `Mesh.aligned(to:options:)` ([#22](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/22)) — point-to-plane ICP registration (PCA pre-align, normal-space sampling, trimmed correspondence), pure Swift + simd, no vendored library. See [docs/algorithms/alignment.md](algorithms/alignment.md).
 
@@ -30,6 +30,33 @@ if let result {
   tried in a fixed order.
 - Returns `nil` for degenerate input (either mesh has fewer than 3 points after welding) rather
   than a meaningless transform.
+## v1.4.0 — discrete curvature estimation
+
+Adds `Mesh.vertexCurvatures()` ([#23](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/23)) — per-vertex principal curvatures and directions via the Rusinkiewicz per-face tensor method, pure Swift + simd, ported from the algorithm trimesh2's `TriMesh_curvature.cc` (MIT) and the PMP library's curvature module implement. See [docs/algorithms/curvature.md](algorithms/curvature.md).
+
+```swift
+let welded = mesh.welded()                 // requires welded input, same precondition as
+                                            // triangleAdjacency()/connectedComponents()
+for c in welded.vertexCurvatures() {
+    print(c.k1, c.k2, c.mean, c.gaussian)  // c.d1/c.d2 — unit principal directions
+}
+```
+
+- Chosen over Meyer et al.'s cotan-Laplacian approach specifically for robustness on noisy/
+  irregular real-scan tessellation: no obtuse-triangle clamp anywhere in the pipeline (the cotan
+  approach needs one, and still degrades on slivers).
+- Sliver-robust by construction: a face degenerate or an extreme sliver (near-zero area relative
+  to its longest edge squared) is excluded from the fit entirely — never fed into an
+  ill-conditioned solve that could poison its corners with a garbage tensor. A vertex touched
+  only by excluded faces (or none at all) reports `k1 == k2 == 0`, never `NaN`.
+  `Linalg.solve` returning `nil` and any non-finite intermediate result are both guarded directly
+  too, as defense in depth beyond the area/aspect pre-filter.
+- `k1` is always the eigenvalue of larger magnitude, signed so a convex bulge (e.g. an
+  outward-facing sphere) is positive — matching `vertexNormals()`'s own outward-normal
+  convention. Analytic test fixtures (a sphere zone, an open multi-ring cylinder, a flat grid)
+  confirm this against the closed-form curvature of each shape.
+- Deterministic: no Dictionary/Set iteration in the hot path, and each vertex's arbitrary initial
+  tangent-frame pick doesn't affect the final (eigenvalue-invariant) result.
 
 ## v1.3.0 — #19 review follow-ups (fitMergeSkipped, isWatertight, region-local fit floor)
 

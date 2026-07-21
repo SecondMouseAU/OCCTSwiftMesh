@@ -72,3 +72,15 @@ The GOM-style alignment-MODE enum (pre-align / best-fit / local-best-fit / 3-2-1
 upstream, not in this package — see
 [issue #22](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/22)'s context). This is just the
 registration primitive itself.
+
+## Known limitation: near-degenerate principal axes
+
+The PCA pre-align assumes the two dominant principal axes are well-defined. On a body whose
+covariance eigenvalues are (near-)equal in a subspace (a square-section prism, a near-cubic
+part), the eigenvector pair there is arbitrary, so all 4 sign-combination candidates can start
+badly and the subsequent ICP refinement — a local optimizer — may converge to a wrong pose or
+not at all. `AlignResult.converged == false` (or a large `residualRMS`) is the signal; supplying
+a caller-side initial guess by pre-transforming the source, or aligning a less symmetric
+sub-region, is the workaround. Bodies with continuous symmetry about an axis (cylinders) have an
+inherently unobservable rotation about that axis — any such rotation is an equally valid
+alignment, and which one is returned is an artifact of sampling, not an error.
