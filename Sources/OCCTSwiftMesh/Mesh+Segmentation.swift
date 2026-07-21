@@ -78,9 +78,13 @@ extension Mesh {
     }
 
     /// Deterministic DFS flood over edge-adjacent triangles, absorbing an unassigned neighbour
-    /// iff its face normal is within `maxDihedralDegrees` of the seed triangle's. Region
-    /// membership is a pure reachability computation over a fixed (order-independent) adjacency
-    /// SET, so it doesn't depend on `adjacency[t]`'s internal element order — only on seed order
+    /// iff its face normal is within `maxDihedralDegrees` of the CURRENT triangle's (a local
+    /// flood, matching the reference implementation) — only adjacent-pair steps are gated, never
+    /// neighbour-vs-seed, so a region tolerates gradual curvature drift well beyond the
+    /// threshold across its extent. Because the pairwise gate is symmetric, region membership is
+    /// exactly the connected component of the "smooth-edge" subgraph (adjacency pairs whose
+    /// normals agree within the threshold) containing the seed: a pure reachability computation
+    /// that doesn't depend on `adjacency[t]`'s internal element order — only on seed order
     /// (`0..<triangleCount`, deterministic).
     static func segmentSmoothRegions(triangleCount tc: Int, normals: [SIMD3<Float>], adjacency: [[Int]],
                                      maxDihedralDegrees: Float) -> [[Int]] {
