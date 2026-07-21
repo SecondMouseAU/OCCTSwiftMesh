@@ -22,7 +22,7 @@ OCCTSwift itself stays focused on its mission as an OCCT wrapper. Mesh algorithm
 
 ## Status
 
-✅ **v1.1.0** — SemVer-stable. Ships `Mesh.simplified(_:)` (decimation, vendored [meshoptimizer](https://github.com/zeux/meshoptimizer) v1.1) and `Mesh.crossSection(plane:)` (planar slicing into closed contours). Requires OCCTSwift v1.0.1 or later. See [docs/CHANGELOG.md](docs/CHANGELOG.md).
+✅ **v1.2.0** — SemVer-stable. Ships `Mesh.simplified(_:)` (decimation, vendored [meshoptimizer](https://github.com/zeux/meshoptimizer) v1.1), `Mesh.crossSection(plane:)` (planar slicing into closed contours), the mesh connectivity toolkit (`welded`, `faceNormals`, `vertexNormals`, `triangleAdjacency`, `connectedComponents`, `subMesh`, `boundaryLoops`, `integrityReport`), and `Mesh.segmented(_:)` (dihedral region-growing + primitive-fit merge). Requires OCCTSwift v1.12.9 or later. See [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## API
 
@@ -63,6 +63,44 @@ for c in section!.contours {
 
 // Or a whole slicer layer stack along an axis:
 let stack = mesh.crossSections(axis: axis, through: p, spacing: 2.0)
+```
+
+### Mesh foundations — weld, connectivity, integrity
+
+Raw OCCT tessellation and STL import both produce (near-)unshared vertices — three unique
+positions per triangle even where triangles are geometrically edge-adjacent. `welded(tolerance:)`
+merges coincident vertices; every adjacency-based operation below needs that welded substrate to
+see real connectivity.
+
+```swift
+let welded = mesh.welded()                 // 0 auto-derives 1e-6 × the bbox diagonal
+
+welded.faceNormals()                       // [SIMD3<Float>], one per triangle
+welded.vertexNormals()                     // area-weighted, per vertex
+welded.triangleAdjacency()                 // [[Int]] — edge-adjacent triangles
+welded.connectedComponents()               // [MeshRegion], largest-first
+welded.subMesh(triangleIndices: [0, 1])    // extract a compact standalone Mesh
+welded.boundaryLoops()                     // [[UInt32]] — open-edge rings
+
+let report = mesh.integrityReport()        // welds internally — safe to call on raw input
+print(report.isWatertight, report.nonManifoldEdgeCount, report.boundaryLoopCount)
+print(report.eulerCharacteristic, report.genus as Any)
+```
+
+### Segmentation — `Mesh.segmented(_:)`
+
+Dihedral region-growing splits a mesh into smoothly-connected surface patches, then a
+primitive-fit merge pass undoes coarse-tessellation "confetti" (a low-poly cylinder's facets,
+each past the dihedral threshold, growing back into one cylinder + end caps). Welds internally,
+so unwelded input doesn't silently degrade to one region per triangle.
+
+```swift
+let segmented = mesh.segmented()           // Mesh.SegmentOptions() defaults
+for (region, fit) in zip(segmented.regions, segmented.fits) {
+    print(region.triangleIndices.count, "triangles →", fit.kind, fit.residualRMS)
+}
+// segmented.truncatedTriangleCount reports anything dropped by maxRegions / minRegionTriangles —
+// never silent.
 ```
 
 ## Installation
