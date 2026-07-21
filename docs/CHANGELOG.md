@@ -2,6 +2,57 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## v1.2.0 — mesh foundations + region segmentation (#16, #17)
+
+Adds the mesh-domain primitives needed for raw-mesh region analysis (OCCTMCP #101
+`segment_mesh_zones` / #102 `zone_continuity_sweep`), ported from OCCTReconstruct's
+`ReconstructCompute` reference implementation (pure Swift + simd, same lineage, no third-party
+entanglement).
+
+**Foundations (#16):**
+
+- `Mesh.welded(tolerance:)` — grid-hash vertex weld (tolerance `0` auto-derives `1e-6 ×`
+  bbox diagonal, matching `crossSection`'s existing weld default). Everything below assumes
+  welded input — OCCT tessellation and STL loading produce (near-)unshared vertices in practice,
+  so an unwelded soup has no shared edges at all.
+- `Mesh.faceNormals()` / `Mesh.vertexNormals()` — unit per-triangle and area-weighted per-vertex
+  normals.
+- `Mesh.triangleAdjacency()` — per-triangle edge adjacency, deterministically ordered.
+- `Mesh.subMesh(triangleIndices:)` — extract a triangle subset as a standalone, compactly
+  reindexed mesh.
+- `Mesh.boundaryLoops()` — closed rings of open (1-triangle) boundary edges.
+- `Mesh.connectedComponents() -> [MeshRegion]` — union-find split into physically disjoint
+  pieces, largest-first, deterministic tie-break.
+- `Mesh.integrityReport() -> MeshIntegrityReport` — watertight / edge-manifold / vertex-manifold /
+  orientable, non-manifold edge/vertex counts, boundary-loop count, duplicate/degenerate triangle
+  counts, Euler characteristic + genus (single watertight component only), per-component
+  breakdown, and sliver signals (worst + p05 minimum angle, worst + p95 aspect ratio). Semantics
+  follow the Open3D `TriangleMesh` conventions.
+- New shared type `MeshRegion`: triangle-index subset plus area / bbox / mean-normal /
+  boundary-loop-count, computed once at construction — the common return unit for both
+  `connectedComponents()` and `segmented(_:)` below.
+
+**Segmentation (#17):** `Mesh.segmented(_:) -> SegmentedMesh`
+
+- Dihedral region-growing (deterministic DFS flood over edge-adjacent triangles, gated on
+  face-normal agreement) followed by the **mandatory** primitive-fit merge pass: adjacent regions
+  merge when their union still fits ONE analytic primitive (plane / cylinder / sphere / cone)
+  within tolerance. Without the merge pass a coarsely tessellated curved surface (e.g. a 12-facet
+  cylinder) shatters into one region per facet — pinned by
+  `coarsePrismMergesBarrel` in `MeshSegmentationTests`.
+- Every region arrives with a fitted `FittedPrimitive` (kind, params, residual RMS/max, inlier
+  ratio) for free.
+- `SegmentOptions.maxRegions` caps the result; truncation is reported via
+  `SegmentedMesh.truncated`, never silent.
+- **Determinism**: two calls on identical input produce byte-identical output (regions AND their
+  internal triangle-index order). This required sorting `triangleAdjacency()`'s per-triangle
+  neighbour lists and canonicalizing every region's triangle-index array ascending — Dictionary
+  iteration order is not a reproducible tie-break on its own, even within a single process run.
+- First-order only (face normals); no curvature term. Curvature-seeded growing is a deliberate
+  follow-up (needs a curvature estimator first).
+
+No OCCTSwift API or vendored-dependency change.
+
 ## v1.1.6 — repin OCCTSwift 1.12.9 (#318 and #323 crash/hang fixes)
 
 Repin the OCCTSwift floor to **1.12.9**, which carries kernel patch 0006 (a `BRepGProp_EdgeTool` null-curve-on-surface guard, [OCCTSwift#318](https://github.com/SecondMouseAU/OCCTSwift/issues/318)) and patches 0007 through 0009 (free-bounds `lwire` reset, boolean-path BSpline O(1) periodic normalization, STEP-writer oversized-string split; [OCCTSwift#323](https://github.com/SecondMouseAU/OCCTSwift/issues/323)), on top of the earlier patches. No API or behaviour change.

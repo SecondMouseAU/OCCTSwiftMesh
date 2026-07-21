@@ -22,7 +22,7 @@ OCCTSwift itself stays focused on its mission as an OCCT wrapper. Mesh algorithm
 
 ## Status
 
-✅ **v1.1.0** — SemVer-stable. Ships `Mesh.simplified(_:)` (decimation, vendored [meshoptimizer](https://github.com/zeux/meshoptimizer) v1.1) and `Mesh.crossSection(plane:)` (planar slicing into closed contours). Requires OCCTSwift v1.0.1 or later. See [docs/CHANGELOG.md](docs/CHANGELOG.md).
+✅ **v1.2.0** — SemVer-stable. Ships `Mesh.simplified(_:)` (decimation, vendored [meshoptimizer](https://github.com/zeux/meshoptimizer) v1.1), `Mesh.crossSection(plane:)` (planar slicing into closed contours), mesh foundations (weld / normals / adjacency / components / boundary loops / integrity report), and `Mesh.segmented(_:)` (dihedral region-growing + primitive-fit merge). Requires OCCTSwift v1.12.9 or later. See [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## API
 
@@ -65,12 +65,47 @@ for c in section!.contours {
 let stack = mesh.crossSections(axis: axis, through: p, spacing: 2.0)
 ```
 
+### Mesh foundations — weld, adjacency, components, integrity
+
+```swift
+let welded = mesh.welded()                          // grid-hash vertex merge; everything below needs this first
+let normals = welded.faceNormals()
+let adjacency = welded.triangleAdjacency()
+let pieces = welded.connectedComponents()            // largest-first, deterministic
+let loops = welded.boundaryLoops()                   // closed rings of open (1-triangle) edges
+let sub = welded.subMesh(triangleIndices: [0, 1, 2])
+
+let report = welded.integrityReport()
+print(report.isWatertight, report.boundaryLoopCount, report.components.count)
+```
+
+### Region segmentation — `Mesh.segmented(_:)`
+
+Dihedral region-growing (breaks at sharp face-normal changes) followed by a primitive-fit merge
+pass — adjacent regions merge back together when their union still fits ONE analytic surface
+(plane / cylinder / sphere / cone). Without the merge pass, a coarsely tessellated curved surface
+(e.g. a 12-facet cylinder) shatters into one region per facet; with it, every region arrives with
+a fitted primitive for free.
+
+```swift
+let result = welded.segmented(.init(maxDihedralDegrees: 20, maxRegions: 64))
+for region in result.regions {
+    print(region.triangleIndices.count, "tris,", region.area, "area,", region.boundaryLoopCount, "loops")
+}
+for fit in result.fits {
+    print(fit.kind, fit.residualRMS)   // e.g. .cylinder, 0.03
+}
+if result.truncated { print("capped at maxRegions") }
+```
+
+Deterministic: two calls on identical (welded) input return byte-identical output.
+
 ## Installation
 
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/SecondMouseAU/OCCTSwiftMesh.git", from: "1.1.2"),
+    .package(url: "https://github.com/SecondMouseAU/OCCTSwiftMesh.git", from: "1.2.0"),
 ],
 targets: [
     .target(
