@@ -22,7 +22,7 @@ OCCTSwift itself stays focused on its mission as an OCCT wrapper. Mesh algorithm
 
 ## Status
 
-✅ **v1.3.0** — SemVer-stable. Ships `Mesh.simplified(_:)` (decimation, vendored [meshoptimizer](https://github.com/zeux/meshoptimizer) v1.1), `Mesh.crossSection(plane:)` (planar slicing into closed contours), the mesh connectivity toolkit (`welded`, `faceNormals`, `vertexNormals`, `triangleAdjacency`, `connectedComponents`, `subMesh`, `boundaryLoops`, `integrityReport`), and `Mesh.segmented(_:)` (dihedral region-growing + primitive-fit merge). Requires OCCTSwift v1.12.9 or later. See [docs/CHANGELOG.md](docs/CHANGELOG.md).
+✅ **v1.4.0** — SemVer-stable. Ships `Mesh.simplified(_:)` (decimation, vendored [meshoptimizer](https://github.com/zeux/meshoptimizer) v1.1), `Mesh.crossSection(plane:)` (planar slicing into closed contours), the mesh connectivity toolkit (`welded`, `faceNormals`, `vertexNormals`, `triangleAdjacency`, `connectedComponents`, `subMesh`, `boundaryLoops`, `integrityReport`), `Mesh.segmented(_:)` (dihedral region-growing + primitive-fit merge), and `Mesh.vertexCurvatures()` (Rusinkiewicz per-face curvature tensor). Requires OCCTSwift v1.12.9 or later. See [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## API
 
@@ -103,6 +103,24 @@ for (region, fit) in zip(segmented.regions, segmented.fits) {
 // never silent. segmented.fitMergeSkipped reports when the fit-gated merge pass itself couldn't
 // run (raw region count still over an internal cap after the cheap coplanar pre-merge) — also
 // never silent.
+```
+
+### Curvature — `Mesh.vertexCurvatures()`
+
+Per-vertex principal curvatures and directions (Rusinkiewicz per-face tensor method, chosen over
+Meyer's cotan-Laplacian for robustness on noisy/irregular tessellation — no obtuse-triangle
+clamp anywhere in the pipeline). Requires welded input, same precondition as `triangleAdjacency()`
+/`connectedComponents()`.
+
+```swift
+let welded = mesh.welded()
+for c in welded.vertexCurvatures() {
+    print(c.k1, c.k2, c.mean, c.gaussian)  // c.d1/c.d2 — unit principal directions
+}
+// k1 is signed positive for a convex bulge (e.g. an outward-facing sphere), matching
+// vertexNormals()'s own outward-normal convention. A face too degenerate/sliver-thin for a
+// stable fit is excluded from it entirely; a vertex touched only by such faces reports
+// k1 == k2 == 0, never NaN.
 ```
 
 ## Installation
