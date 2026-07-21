@@ -2,6 +2,72 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## v1.2.0 — mesh foundations + region segmentation
+
+Adds the mesh connectivity toolkit ([#16](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/16))
+and dihedral region-growing + primitive-fit segmentation
+([#17](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/17)) — both pure Swift + simd, no
+OCCT kernel calls, ported from OCCTReconstruct's `ReconstructCompute` reference implementation.
+
+**Mesh foundations** (`Mesh+Welding.swift`, `Mesh+Topology.swift`, `MeshIntegrityReport.swift`):
+
+```swift
+let welded = mesh.welded(tolerance: 0)        // 0 auto-derives 1e-6 × bbox diagonal
+welded.faceNormals()                          // [SIMD3<Float>], one per triangle
+welded.vertexNormals()                        // area-weighted, per vertex
+welded.triangleAdjacency()                    // [[Int]] — edge-adjacent triangles
+welded.connectedComponents()                  // [MeshRegion], largest-first
+welded.subMesh(triangleIndices:)               // extract a compact standalone Mesh, or nil
+welded.boundaryLoops()                        // [[UInt32]] — open-edge rings
+mesh.integrityReport()                        // MeshIntegrityReport — welds internally
+```
+
+- `triangleAdjacency()`, `connectedComponents()`, and `boundaryLoops()` key connectivity off
+  shared vertex INDICES — they need welded input. Raw OCCT tessellation and STL import produce
+  per-triangle-unique vertices (no two triangles share an index at all), so call `.welded()`
+  first or every triangle comes back isolated. This is a deliberate, documented precondition, not
+  an oversight — see each method's doc comment.
+- `integrityReport()` welds internally (so it's safe to call on raw input directly) but counts
+  `duplicateTriangleCount` / `degenerateTriangleCount` from the RAW welded topology before
+  cleanup, while every other metric (manifoldness, Euler characteristic, genus, components,
+  sliver signals) is computed on the deduplicated, non-degenerate topology — so a handful of
+  exact duplicate faces doesn't masquerade as a real non-manifold defect.
+- Semantics follow the Open3D `TriangleMesh` conventions (`is_edge_manifold` /
+  `is_vertex_manifold` / `is_watertight` / `cluster_connected_triangles`).
+- `genus` is `nil` unless the mesh is watertight and orientable; computed additively across all
+  closed components (`genus = components.count - eulerCharacteristic / 2`).
+
+**Segmentation** (`Mesh+Segmentation.swift`, `PrimitiveFitter.swift`, `FittedPrimitive.swift`):
+
+```swift
+let segmented = mesh.segmented(.init(maxDihedralDegrees: 20))
+for (region, fit) in zip(segmented.regions, segmented.fits) {
+    print(region.triangleIndices.count, fit.kind, fit.residualRMS)
+}
+```
+
+- Region-growing breaks at sharp edges (`maxDihedralDegrees`, default 20°); the merge pass then
+  greedily unions adjacent regions whose union still fits a single plane/cylinder/sphere/cone
+  within `mergeRelativeTolerance × bboxDiagonal`, undoing coarse-tessellation "confetti" (a
+  12-facet cylinder's facets, each past the dihedral threshold, merge back into one cylinder).
+  A cube's 90° corners are correctly left unmerged.
+- Welds internally (`SegmentOptions.weldTolerance`) — unwelded input does not silently degrade to
+  one region per triangle; every `MeshRegion.triangleIndices` still refers to the input mesh's
+  own (possibly unwelded) triangle order.
+- A cheap coplanar pre-merge (fit-free, ~2° threshold) runs before the fit-gated pass whenever
+  the raw region count exceeds an internal cap (1500, matching the OCCTReconstruct reference),
+  keeping segmentation usable at 400k+ triangle scan meshes.
+- `SegmentOptions.maxRegions` / `minRegionTriangles` never truncate silently:
+  `SegmentedMesh.truncatedTriangleCount` reports exactly how many triangles were dropped and why.
+- Determinism is load-bearing, not incidental: region composition, merge order, and boundary-loop
+  chaining all have explicit tie-breaks (documented inline) so two runs on identical input
+  produce byte-identical output — Dictionary/Set iteration order is NOT a substitute.
+- Out of scope for this release (tracked as follow-ups per #17): curvature-based seeding, the
+  Schnabel-style RANSAC alternative strategy + auto-selection bake-off, and slippage analysis.
+
+New public types: `MeshRegion`, `MeshIntegrityReport`, `Mesh.SegmentOptions`, `SegmentedMesh`,
+`FittedPrimitive` (+ nested `FittedPrimitive.Kind`).
+
 ## v1.1.6 — repin OCCTSwift 1.12.9 (#318 and #323 crash/hang fixes)
 
 Repin the OCCTSwift floor to **1.12.9**, which carries kernel patch 0006 (a `BRepGProp_EdgeTool` null-curve-on-surface guard, [OCCTSwift#318](https://github.com/SecondMouseAU/OCCTSwift/issues/318)) and patches 0007 through 0009 (free-bounds `lwire` reset, boolean-path BSpline O(1) periodic normalization, STEP-writer oversized-string split; [OCCTSwift#323](https://github.com/SecondMouseAU/OCCTSwift/issues/323)), on top of the earlier patches. No API or behaviour change.
