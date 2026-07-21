@@ -22,7 +22,7 @@ OCCTSwift itself stays focused on its mission as an OCCT wrapper. Mesh algorithm
 
 ## Status
 
-✅ **v1.3.0** — SemVer-stable. Ships `Mesh.simplified(_:)` (decimation, vendored [meshoptimizer](https://github.com/zeux/meshoptimizer) v1.1), `Mesh.crossSection(plane:)` (planar slicing into closed contours), the mesh connectivity toolkit (`welded`, `faceNormals`, `vertexNormals`, `triangleAdjacency`, `connectedComponents`, `subMesh`, `boundaryLoops`, `integrityReport`), and `Mesh.segmented(_:)` (dihedral region-growing + primitive-fit merge). Requires OCCTSwift v1.12.9 or later. See [docs/CHANGELOG.md](docs/CHANGELOG.md).
+✅ **v1.4.0** — SemVer-stable. Ships `Mesh.simplified(_:)` (decimation, vendored [meshoptimizer](https://github.com/zeux/meshoptimizer) v1.1), `Mesh.crossSection(plane:)` (planar slicing into closed contours), the mesh connectivity toolkit (`welded`, `faceNormals`, `vertexNormals`, `triangleAdjacency`, `connectedComponents`, `subMesh`, `boundaryLoops`, `integrityReport`), `Mesh.segmented(_:)` (dihedral region-growing + primitive-fit merge), and `Mesh.aligned(to:options:)` (point-to-plane ICP registration). Requires OCCTSwift v1.12.9 or later. See [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## API
 
@@ -103,6 +103,21 @@ for (region, fit) in zip(segmented.regions, segmented.fits) {
 // never silent. segmented.fitMergeSkipped reports when the fit-gated merge pass itself couldn't
 // run (raw region count still over an internal cap after the cheap coplanar pre-merge) — also
 // never silent.
+```
+
+### Alignment — `Mesh.aligned(to:options:)`
+
+Point-to-plane ICP registration: recovers the rigid transform that best aligns this (source) mesh
+onto a reference mesh. PCA/bbox pre-align (tries all 4 sign-valid orientations, keeps the best)
+runs before the iterative refinement; normal-space sampling (on by default) keeps a small
+feature's rare normal direction from being drowned out by a flat majority; trimmed correspondence
+handles partial overlap between the two meshes.
+
+```swift
+if let result = scan.aligned(to: cad) {
+    print(result.transform)       // simd_double4x4 — maps scan's original vertices into cad's frame
+    print(result.residualRMS, result.iterations, result.converged)
+}
 ```
 
 ## Installation

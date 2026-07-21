@@ -2,6 +2,35 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## v1.4.0 — point-to-plane ICP alignment
+
+Adds `Mesh.aligned(to:options:)` ([#22](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/22)) — point-to-plane ICP registration (PCA pre-align, normal-space sampling, trimmed correspondence), pure Swift + simd, no vendored library. See [docs/algorithms/alignment.md](algorithms/alignment.md).
+
+```swift
+let result = scan.aligned(to: cad)   // Mesh.AlignOptions() defaults
+if let result {
+    print(result.transform, result.residualRMS, result.iterations, result.converged)
+}
+```
+
+- PCA/bbox pre-align tries all 4 orientation-preserving sign combinations of the two dominant
+  principal axes (PCA eigenvectors have no inherent sign) and keeps whichever gives the lowest
+  quick correspondence residual — avoiding a silently-wrong 180°-flipped starting pose.
+- Normal-space sampling (Rusinkiewicz & Levoy, 2001) is on by default: source points are bucketed
+  by their own normal direction and picked round-robin across buckets, so a small feature's rare
+  normal direction gets comparable representation to the flat majority regardless of population
+  size — the flat majority can no longer make the feature "slide" underneath noise.
+- Trimmed ICP (distance cap + additional worst-`trimFraction` residual trim) handles partial
+  overlap between the two meshes without converging to a wrong-but-locally-plausible alignment of
+  just the non-overlapping parts.
+- `AlignResult.residualRMS` is measured at the RETURNED pose (a final correspondence pass after
+  the loop), not the pose one iteration prior.
+- Deterministic: the internal k-d tree's median split, normal-space sampling's bucket order, and
+  trimmed-correspondence ties all have explicit tie-breaks; PCA pre-align's 4 candidates are
+  tried in a fixed order.
+- Returns `nil` for degenerate input (either mesh has fewer than 3 points after welding) rather
+  than a meaningless transform.
+
 ## v1.3.0 — #19 review follow-ups (fitMergeSkipped, isWatertight, region-local fit floor)
 
 Follow-ups from the v1.2.0 (#19) review, tracked in [#20](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/20). None affect the correctness of what shipped in v1.2.0; two are behavior fixes, the rest are diagnostics/docs/tests.

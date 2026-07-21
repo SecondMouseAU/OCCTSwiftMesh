@@ -1,5 +1,6 @@
 import simd
 import OCCTSwift
+@testable import OCCTSwiftMesh
 
 // Shared synthetic-mesh builders for the mesh-foundations and segmentation test suites.
 // All pure geometry — no OCCT tessellation needed, mirroring CrossSectionTests' approach.
@@ -265,4 +266,71 @@ func shallowCylindricalArcMesh(radius: Float = 500, widthUnits: Float = 200, axi
         }
     }
     return Mesh(vertices: positions, indices: indices)!
+}
+
+/// A genuinely 3D-shaped ("bumpy terrain") rectangular patch: `z = amplitude · sin(x·freq) ·
+/// cos(y·freq·0.7)` over `xRange`/`yRange`, sampled on a regular grid — real curvature/asymmetry
+/// everywhere (no flat or rotationally-symmetric regions to confuse ICP correspondence), and
+/// GLOBALLY CONSISTENT world coordinates: two patches built from overlapping ranges genuinely
+/// overlap in world space (same `z = f(x, y)` everywhere), for partial-overlap alignment tests.
+/// Welded by construction (shared grid vertices).
+func bumpyPatchMesh(xRange: ClosedRange<Float>, yRange: ClosedRange<Float> = 0...20,
+                    segmentsPerUnit: Float = 1, amplitude: Float = 3, frequency: Float = 0.3) -> Mesh {
+    let segmentsX = max(2, Int((xRange.upperBound - xRange.lowerBound) * segmentsPerUnit))
+    let segmentsY = max(2, Int((yRange.upperBound - yRange.lowerBound) * segmentsPerUnit))
+    var positions: [SIMD3<Float>] = []
+    for j in 0...segmentsY {
+        let y = yRange.lowerBound + Float(j) / Float(segmentsY) * (yRange.upperBound - yRange.lowerBound)
+        for i in 0...segmentsX {
+            let x = xRange.lowerBound + Float(i) / Float(segmentsX) * (xRange.upperBound - xRange.lowerBound)
+            let z = amplitude * sin(x * frequency) * cos(y * frequency * 0.7)
+            positions.append(SIMD3(x, y, z))
+        }
+    }
+    let cols = segmentsX + 1
+    var indices: [UInt32] = []
+    for j in 0..<segmentsY {
+        for i in 0..<segmentsX {
+            let a = UInt32(j * cols + i), b = UInt32(j * cols + i + 1)
+            let c = UInt32((j + 1) * cols + i), d = UInt32((j + 1) * cols + i + 1)
+            indices.append(contentsOf: [a, b, d, a, d, c])
+        }
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}
+
+/// A mostly-flat rectangular grid (`z ≈ 0` almost everywhere) with a single localized Gaussian
+/// bump — the normal-space-sampling motivating case: the bump's tilted-normal vertices are a
+/// small minority of the mesh, everywhere else the normal is uniformly `(0, 0, 1)`. One regular
+/// grid (no stitching), welded by construction (shared grid vertices).
+func flatWithBumpMesh(size: Float = 40, segments: Int = 40, bumpCenter: SIMD2<Float> = SIMD2(20, 20),
+                      bumpSigma: Float = 1.5, bumpHeight: Float = 4) -> Mesh {
+    var positions: [SIMD3<Float>] = []
+    for j in 0...segments {
+        let y = Float(j) / Float(segments) * size
+        for i in 0...segments {
+            let x = Float(i) / Float(segments) * size
+            let dx = x - bumpCenter.x, dy = y - bumpCenter.y
+            let z = bumpHeight * exp(-(dx * dx + dy * dy) / (2 * bumpSigma * bumpSigma))
+            positions.append(SIMD3(x, y, z))
+        }
+    }
+    let cols = segments + 1
+    var indices: [UInt32] = []
+    for j in 0..<segments {
+        for i in 0..<segments {
+            let a = UInt32(j * cols + i), b = UInt32(j * cols + i + 1)
+            let c = UInt32((j + 1) * cols + i), d = UInt32((j + 1) * cols + i + 1)
+            indices.append(contentsOf: [a, b, d, a, d, c])
+        }
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}
+
+/// Applies a rigid transform to every vertex of `mesh`, keeping its indices unchanged.
+func transformedMesh(_ mesh: Mesh, by transform: simd_double4x4) -> Mesh {
+    let newPositions = mesh.vertices.map { v -> SIMD3<Float> in
+        SIMD3<Float>(Mesh.apply(transform, SIMD3<Double>(v)))
+    }
+    return Mesh(vertices: newPositions, indices: mesh.indices)!
 }
