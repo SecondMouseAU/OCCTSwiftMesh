@@ -27,6 +27,17 @@ struct SegmentationTests {
         for region in result.regions { #expect(region.triangleIndices.count == 2) }
     }
 
+    @Test("Unwelded curved body still merges its shattered barrel — internal weld path holds beyond the box case")
+    func unweldedCurvedBodyStillSegments() {
+        let mesh = unwelded(coarseCappedCylinderMesh(radius: 4, sides: 12, rings: 5, height: 4))
+        let result = mesh.segmented()
+        #expect(result.regions.count == 3)
+        let cylinders = result.fits.filter { $0.kind == .cylinder }
+        let planes = result.fits.filter { $0.kind == .plane }
+        #expect(cylinders.count == 1)
+        #expect(planes.count == 2)
+    }
+
     @Test("A coarse capped cylinder merges its shattered barrel facets back into one cylinder")
     func coarseCylinderMergesToBarrelPlusCaps() {
         let mesh = coarseCappedCylinderMesh(radius: 4, sides: 12, rings: 5, height: 4)
@@ -105,5 +116,68 @@ struct SegmentationTests {
         #expect(result.regions.isEmpty)
         #expect(result.fits.isEmpty)
         #expect(result.truncatedTriangleCount == 12)
+    }
+
+    @Test("The normal (under-cap) path never reports the fit-gated merge pass as skipped")
+    func fitMergeNotSkippedInNormalPath() {
+        #expect(!weldedUnitCube().segmented().fitMergeSkipped)
+    }
+}
+
+@Suite("RegionMerging.merge — fit-merge-skipped diagnostic (issue #20 item 1)")
+struct FitMergeSkippedTests {
+    @Test("When even the coplanar pre-merge can't get under the cap, the fit-gated pass is skipped and reported")
+    func skipIsReportedWhenCapExceeded() {
+        let mesh = weldedUnitCube()
+        let normals = mesh.faceNormals()
+        let adjacency = mesh.triangleAdjacency()
+        let seeds = Mesh.segmentSmoothRegions(triangleCount: mesh.triangleCount, normals: normals,
+                                              adjacency: adjacency, maxDihedralDegrees: 20)
+            .map { MeshRegion(triangleIndices: $0,
+                              area: Mesh.area(ofTriangles: $0, vertices: mesh.vertices, indices: mesh.indices)) }
+        // 6 box faces, 90° apart — the ~2° coplanar pre-merge can't touch them, so the region
+        // count stays at 6, above the artificially tiny cap below.
+        #expect(seeds.count == 6)
+
+        var lo = mesh.vertices[0], hi = mesh.vertices[0]
+        for p in mesh.vertices { lo = simd_min(lo, p); hi = simd_max(hi, p) }
+        let bodyDiag = Double(simd_length(hi - lo))
+
+        let (regions, fits, skipped) = RegionMerging.merge(
+            vertices: mesh.vertices, indices: mesh.indices, regions: seeds, faceNormals: normals,
+            adjacency: adjacency, bodyDiag: bodyDiag, relativeTolerance: 0.004, maxMergeAngleDegrees: 50,
+            maxRegionsToMerge: 3)
+        #expect(skipped)
+        #expect(regions.count == 6)   // unmerged seed regions — the fit-gated pass never ran
+        #expect(fits.count == 6)
+    }
+
+    @Test("A single region (nothing to merge) is not reported as skipped")
+    func singleRegionIsNotSkipped() {
+        let mesh = weldedUnitCube()
+        let region = MeshRegion(triangleIndices: Array(0..<mesh.triangleCount),
+                                area: Mesh.area(ofTriangles: Array(0..<mesh.triangleCount),
+                                                vertices: mesh.vertices, indices: mesh.indices))
+        let normals = mesh.faceNormals()
+        let adjacency = mesh.triangleAdjacency()
+        let (_, _, skipped) = RegionMerging.merge(
+            vertices: mesh.vertices, indices: mesh.indices, regions: [region], faceNormals: normals,
+            adjacency: adjacency, bodyDiag: 1, relativeTolerance: 0.004, maxMergeAngleDegrees: 50)
+        #expect(!skipped)
+    }
+}
+
+@Suite("PrimitiveFitter.bestFit — region-local floor (issue #20 item 4)")
+struct PrimitiveFitterFloorTests {
+    @Test("A shallow cylindrical arc classifies as a cylinder via a region-local tie-break floor")
+    func shallowArcClassifiesAsCylinder() {
+        let mesh = shallowCylindricalArcMesh(radius: 500, widthUnits: 200, axialUnits: 200)
+        let allTriangles = Array(0..<mesh.triangleCount)
+        let region = MeshRegion(triangleIndices: allTriangles,
+                                area: Mesh.area(ofTriangles: allTriangles, vertices: mesh.vertices, indices: mesh.indices))
+        let fit = PrimitiveFitter.bestFit(vertices: mesh.vertices, indices: mesh.indices, region: region,
+                                          faceNormals: mesh.faceNormals())
+        #expect(fit.kind == .cylinder)
+        if let radius = fit.radius { #expect(abs(radius - 500) < 5) }
     }
 }
