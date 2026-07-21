@@ -20,6 +20,18 @@ Your App
 
 Provide a single canonical implementation of mesh-domain algorithms that all OCCTSwift consumers (OCCTSwiftScripts, OCCTMCP, OCCTDesignLoop, UnfoldEngine, app code) can depend on. Avoid the failure mode of every consumer reimplementing OCCTSwift `Mesh` ↔ low-level-vertex-array marshalling locally.
 
+## Knowledge Management
+
+Durable, curated *what/why* knowledge for this repo lives in **`okf/`** — an OKF bundle (Open
+Knowledge Format: categorized markdown + YAML frontmatter; see the ecosystem's
+[`OKF-STANDARD.md`](https://github.com/SecondMouseAU/ecosystem/blob/main/OKF-STANDARD.md)).
+Start at [`okf/index.md`](okf/index.md) for role, dependencies, and components; see
+[`okf/policies/context-first.md`](okf/policies/context-first.md) (docs lookup order) and
+[`okf/policies/docs-current.md`](okf/policies/docs-current.md) (docs must stay current) for the
+mandatory policies. `CLAUDE.md` remains the detailed working reference for how to build, test,
+and extend the code; `okf/` is the narrative for why it exists and how it relates to the rest of
+the ecosystem.
+
 ## Current State
 
 **Pre-alpha scaffold — no algorithms implemented yet.** The bridge has only a placeholder `OCCTMeshOptimizerABIVersion()` symbol; meshoptimizer is not yet vendored; `Mesh.simplified(_:)` does not exist. The full v0.1.0 implementation plan is in [`docs/INITIAL_IMPLEMENTATION.md`](docs/INITIAL_IMPLEMENTATION.md) — start there.
@@ -155,6 +167,7 @@ Tag patch releases (v0.X.Y) for tiny additive fixes; minor releases (v0.X.0) for
 | Release-by-release history | `docs/CHANGELOG.md` |
 | Per-algorithm design notes | `docs/algorithms/<name>.md` (write per-algorithm) |
 | License attributions | `NOTICE.md` |
+| Curated what/why, ecosystem relationships, policies | `okf/index.md` |
 
 ## User Directives
 
