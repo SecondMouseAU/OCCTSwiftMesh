@@ -86,9 +86,12 @@ pre-merge seed regions, not the fully-merged result.
 Region composition and merge order both depend on decisions that would otherwise be
 Dictionary-iteration-order-dependent (a fresh, randomized hash seed per process run in Swift):
 
-- **Region growing** (`segmentSmoothRegions`) is a pure graph-reachability computation over a
-  fixed adjacency SET — membership doesn't depend on `adjacency[t]`'s internal element order,
-  only on seed order (`0..<triangleCount`, already deterministic).
+- **Region growing** (`segmentSmoothRegions`) is, in its DEFAULT mode, a pure graph-reachability
+  computation over a fixed adjacency SET — membership doesn't depend on `adjacency[t]`'s internal
+  element order, or even on seed order at all (two different seeds can never contend for the same
+  triangle when the absorption test is a fixed, region-independent pairwise relation — see
+  "Curvature-ordered, seed-relative growing" below for the one mode where seed order DOES matter,
+  by design).
 - **Region merging**'s pair-processing order is explicitly sorted (softest boundary first,
   i.e. highest dihedral dot product, tie-broken on the packed region-pair key) rather than left
   to dictionary iteration — equal-dihedral pairs would otherwise merge in a different order each
@@ -97,12 +100,39 @@ Dictionary-iteration-order-dependent (a fresh, randomized hash seed per process 
 A dedicated determinism test (segment the same mesh twice, compare regions/fits/params exactly)
 guards this — see `MeshSegmentationTests.swift`.
 
-## Out of scope (tracked as follow-ups per issue #17)
+## Curvature-ordered, seed-relative growing (`SegmentOptions.curvatureSeeding`, issue #29)
 
-- Curvature-based seeding (needs a curvature estimator first — Rusinkiewicz per-face tensor,
-  planned separately).
-- The Schnabel-style RANSAC alternative strategy (`PrimitiveRANSAC` in the OCCTReconstruct
-  reference) and its auto-selection bake-off against dihedral region-growing.
-- Slippage analysis (Gelfand-Guibas: per-region extrude/revolve/helix classification with axes).
+The default absorption test gates each step against the CURRENT frontier triangle's own normal
+(pairwise) — a region tolerates gradual curvature drift well beyond `maxDihedralDegrees` across
+its total extent, and because that test is fixed and region-independent, the resulting PARTITION
+is a graph-connectivity invariant: reordering seeds alone could never change it, since two regions
+can never contend for the same triangle under a rule that doesn't distinguish who's asking.
+
+`curvatureSeeding: true` changes two things together: seeds are tried in ASCENDING per-face
+curvature order (flat first) instead of raw triangle-index order, AND the absorption test becomes
+SEED-RELATIVE — every candidate is gated against the growing region's fixed SEED normal instead of
+the current frontier. This does distinguish who's asking (the same triangle can be reachable from
+two different seeds' regions at once), so seed order becomes the tie-break: each seed's flood runs
+to completion before the next is tried, so whichever region reaches a contested triangle first
+claims it. Flat regions (processed first) have a seed-relative reach identical to pairwise (near-
+zero curvature drift either way), so they claim their full extent unaffected — while a
+high-curvature blend strip's TOTAL angular span from its own seed is now capped at
+`maxDihedralDegrees`, tighter than pairwise's unbounded gradual-drift tolerance, so it surfaces as
+its own smaller region once its later, higher-curvature seed is finally tried, instead of being
+absorbed arbitrarily by whichever neighbour's flood reached it first. See `segmentSmoothRegions`'s
+doc comment for the full mechanism.
+
+Opt-in (`false` default) — this is a genuine change to the growing rule itself, not just an
+ordering tweak, and existing consumers relying on today's segmentation should not see it shift
+underfoot. Reuses the SAME welded intermediate `segmented(_:)` already builds for adjacency (no
+second weld) to compute `vertexCurvatures()` on.
+
+## RANSAC alternative strategy and auto-selection (issue #27)
+
+`Mesh.segmentedRANSAC(_:)` (Schnabel-style iterative primitive extraction — claims global
+inliers wherever they are, not just contiguous ones) and `Mesh.segmentedAutoSelect(dihedral:
+ransac:)` (a measured bake-off between the two strategies) are documented separately in
+[ransac-segmentation.md](ransac-segmentation.md), alongside the slippage analysis
+([slippage.md](slippage.md)) these three follow-ups from issue #17 unblocked.
 
 These are phased behind the downstream OCCTMCP tool landing, per the tracking issue.

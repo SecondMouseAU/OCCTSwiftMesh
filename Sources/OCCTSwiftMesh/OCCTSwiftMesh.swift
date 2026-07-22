@@ -15,6 +15,16 @@
 // Mesh.slippage(forTriangles:maxSamples:) — Gelfand-Guibas slippage analysis: classifies a
 //   region's surface kind (plane/sphere/cylinder/extrusion/revolution/helix/freeform) and
 //   recovers its characteristic axis.
+// Mesh.creaseEdges(minAngleDegrees:) — dihedral-fold edge detection, chained into rings
+//   (closed loops) and paths (open chains) outlining recessed/raised features.
+// Mesh.windingNumber(at:), .orientationReport(samples:) — generalized winding number
+//   (Jacobson/Kavan/Sorkine-Hornung): robust inside-out / orientation diagnostics on open,
+//   soup, or self-intersecting meshes, where parity/ray tests break down.
+// SegmentOptions.curvatureSeeding — opt-in curvature-ordered, seed-relative region growing
+//   for segmented(_:), so flat regions claim their extent before a fillet/blend strip does.
+// Mesh.segmentedRANSAC(_:), .segmentedAutoSelect(dihedral:ransac:) — Schnabel-style RANSAC
+//   primitive extraction (an alternative to segmented(_:)'s dihedral growing for multi-
+//   primitive scenes) and a measured bake-off between the two strategies.
 // See docs/CHANGELOG.md and docs/algorithms/.
 
 /// Namespace marker for the OCCTSwiftMesh module. The public surface lives
@@ -23,5 +33,5 @@
 /// to attach the module's documentation to.
 public enum OCCTSwiftMesh {
     /// Package version. Bump on each tagged release.
-    public static let version = "1.6.0"
+    public static let version = "1.7.0"
 }

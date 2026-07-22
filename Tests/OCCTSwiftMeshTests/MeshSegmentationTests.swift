@@ -124,6 +124,66 @@ struct SegmentationTests {
     }
 }
 
+@Suite("SegmentOptions.curvatureSeeding — seed-relative growing (issue #29)")
+struct CurvatureSeedingTests {
+
+    @Test("Default (curvatureSeeding: false) is the original pairwise rule — unaffected by seedOrder/seedRelative defaults")
+    func defaultIsUnchanged() {
+        let mesh = coarseCappedCylinderMesh()
+        #expect(!Mesh.SegmentOptions().curvatureSeeding)
+        let a = mesh.segmented()
+        let b = mesh.segmented(Mesh.SegmentOptions(curvatureSeeding: false))
+        #expect(a.regions.map(\.triangleIndices) == b.regions.map(\.triangleIndices))
+    }
+
+    @Test("Pairwise growing tolerates a smooth cylinder wall's gradual curvature drift as ONE region")
+    func pairwiseGrowingToleratesGradualDrift() {
+        // 36 facets around the circumference = 10° dihedral per step, comfortably under the
+        // default 20° maxDihedralDegrees threshold — pure pairwise growing walks the WHOLE
+        // 360° wall as one connected smooth-edge component.
+        let mesh = openCylinderShellMesh(radius: 4, height: 4, segments: 36)
+        let normals = mesh.faceNormals()
+        let adjacency = mesh.triangleAdjacency()
+        let seeds = Mesh.segmentSmoothRegions(triangleCount: mesh.triangleCount, normals: normals,
+                                              adjacency: adjacency, maxDihedralDegrees: 20)
+        #expect(seeds.count == 1)
+    }
+
+    @Test("Seed-relative growing fractures the same smooth cylinder wall into multiple regions")
+    func seedRelativeGrowingFracturesGradualDrift() {
+        // Same fixture as above: seed-relative growing caps each region's TOTAL angular span
+        // from its own seed at maxDihedralDegrees (20°), rather than tolerating unlimited
+        // step-by-step drift — so the same 360° wall now needs several regions to cover it.
+        let mesh = openCylinderShellMesh(radius: 4, height: 4, segments: 36)
+        let normals = mesh.faceNormals()
+        let adjacency = mesh.triangleAdjacency()
+        let seeds = Mesh.segmentSmoothRegions(triangleCount: mesh.triangleCount, normals: normals,
+                                              adjacency: adjacency, maxDihedralDegrees: 20, seedRelative: true)
+        #expect(seeds.count > 1)
+    }
+
+    @Test("curvatureSeeding is deterministic across repeated calls")
+    func determinism() {
+        var options = Mesh.SegmentOptions()
+        options.curvatureSeeding = true
+        let mesh = coarseCappedCylinderMesh()
+        let a = mesh.segmented(options)
+        let b = mesh.segmented(options)
+        #expect(a.regions.map(\.triangleIndices) == b.regions.map(\.triangleIndices))
+        #expect(a.fits.map(\.kind) == b.fits.map(\.kind))
+    }
+
+    @Test("curvatureSeeding still produces a valid segmentation (every triangle accounted for)")
+    func curvatureSeedingProducesValidSegmentation() {
+        var options = Mesh.SegmentOptions()
+        options.curvatureSeeding = true
+        let mesh = coarseCappedCylinderMesh()
+        let result = mesh.segmented(options)
+        let covered = result.regions.reduce(0) { $0 + $1.triangleIndices.count } + result.truncatedTriangleCount
+        #expect(covered == mesh.triangleCount)
+    }
+}
+
 @Suite("RegionMerging.merge — fit-merge-skipped diagnostic (issue #20 item 1)")
 struct FitMergeSkippedTests {
     @Test("When even the coplanar pre-merge can't get under the cap, the fit-gated pass is skipped and reported")

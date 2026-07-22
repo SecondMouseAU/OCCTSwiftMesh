@@ -6,13 +6,18 @@ import OCCTSwift
 // All pure geometry — no OCCT tessellation needed, mirroring CrossSectionTests' approach.
 
 /// A unit cube, corner at the origin, vertices SHARED across faces (8 vertices, 12 triangles) —
-/// already welded by construction.
+/// already welded by construction. CONSISTENTLY outward-wound (`integrityReport().isOrientable
+/// == true`, `genus == 0`, `windingNumber(at: centroid) ≈ 1`) — the original face table had two
+/// faces (the bottom and one side) wound inward, caught during issue #27/#30 review by the first
+/// algorithms in this package to actually depend on winding direction rather than just topology
+/// or per-face dihedral angles. Fixed here (and in `unweldedUnitCube()`, which shares this table)
+/// rather than worked around, since every existing consumer turned out to be orientation-agnostic.
 func weldedUnitCube() -> Mesh {
     let p: [SIMD3<Float>] = [
         SIMD3(0, 0, 0), SIMD3(1, 0, 0), SIMD3(1, 1, 0), SIMD3(0, 1, 0),
         SIMD3(0, 0, 1), SIMD3(1, 0, 1), SIMD3(1, 1, 1), SIMD3(0, 1, 1),
     ]
-    let faces = [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6], [1, 2, 6, 5], [0, 3, 7, 4]]
+    let faces = [[3, 2, 1, 0], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6], [1, 2, 6, 5], [4, 7, 3, 0]]
     var indices: [UInt32] = []
     for f in faces {
         indices.append(contentsOf: [UInt32(f[0]), UInt32(f[1]), UInt32(f[2])])
@@ -30,7 +35,7 @@ func unweldedUnitCube() -> Mesh {
         SIMD3(0, 0, 0), SIMD3(1, 0, 0), SIMD3(1, 1, 0), SIMD3(0, 1, 0),
         SIMD3(0, 0, 1), SIMD3(1, 0, 1), SIMD3(1, 1, 1), SIMD3(0, 1, 1),
     ]
-    let faces = [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6], [1, 2, 6, 5], [0, 3, 7, 4]]
+    let faces = [[3, 2, 1, 0], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6], [1, 2, 6, 5], [4, 7, 3, 0]]
     var positions: [SIMD3<Float>] = []
     var indices: [UInt32] = []
     for f in faces {
@@ -425,6 +430,14 @@ func flatWithBumpMesh(size: Float = 40, segments: Int = 40, bumpCenter: SIMD2<Fl
 }
 
 /// A UV sphere (lat/long grid, poles collapsed to single vertices) — welded by construction.
+/// CONSISTENTLY outward-wound (`integrityReport().isOrientable == true`,
+/// `windingNumber(at: center) ≈ 1`) — found NON-ORIENTABLE during issue #27/#30 review (the two
+/// pole fans wound outward while every band quad wound inward, `-0.93` instead of a clean `-1` at
+/// the center: a mixed-winding signature, not simply "the whole thing flipped"). Fixed by
+/// reversing the band quad's own diagonal split; the pole fans were already correct. Scoped to
+/// THIS fixture only — several others share the visually-similar `[a, b, d, a, d, c]` quad idiom
+/// with their own independently-verified conventions (e.g. the torus genus test) and are
+/// untouched.
 func sphereMesh(radius: Float = 5, latSegments: Int = 12, lonSegments: Int = 16) -> Mesh {
     var positions: [SIMD3<Float>] = []
     let northPole = UInt32(0); positions.append(SIMD3(0, 0, radius))
@@ -447,7 +460,7 @@ func sphereMesh(radius: Float = 5, latSegments: Int = 12, lonSegments: Int = 16)
     for i in 1..<(latSegments - 1) {
         for j in 0..<lonSegments {
             let a = ring(i, j), b = ring(i, j + 1), c = ring(i + 1, j), d = ring(i + 1, j + 1)
-            indices.append(contentsOf: [a, b, d, a, d, c])
+            indices.append(contentsOf: [a, d, b, a, c, d])
         }
     }
     for j in 0..<lonSegments {
@@ -567,6 +580,12 @@ func helicoidStripMesh(innerRadius: Float = 2, outerRadius: Float = 5, pitch: Fl
 /// `center` — the partial-sphere zone a real segmentation region actually looks like (e.g. a
 /// scanned dome/boss), as opposed to `sphereMesh()`'s full, origin-centered sphere. Welded by
 /// construction (shared ring vertices, apex shared by the top fan).
+///
+/// Its own quad band uses the same `[a, b, d, a, d, c]` diagonal idiom `sphereMesh()` used to
+/// (before that one was fixed for issue #27/#30 — see its doc comment) and winds inward as a
+/// result — left AS IS here, deliberately: `WindingNumberTests.openDomeInversionIsDetected` uses
+/// this fixture directly as the "inverted" case (and `reversedWinding(_:)` as the correct one)
+/// rather than fixing it too.
 func domeMesh(center: SIMD3<Float> = SIMD3(30, -10, 5), radius: Float = 5, capAngleDegrees: Float = 50,
              latSegments: Int = 24, lonSegments: Int = 36) -> Mesh {
     var positions: [SIMD3<Float>] = []
@@ -596,4 +615,53 @@ func transformedMesh(_ mesh: Mesh, by transform: simd_double4x4) -> Mesh {
         SIMD3<Float>(Mesh.apply(transform, SIMD3<Double>(v)))
     }
     return Mesh(vertices: newPositions, indices: mesh.indices)!
+}
+
+/// Reverses every triangle's winding (swaps its last two indices) — flips every face normal
+/// without moving a single vertex. Used to exercise `Mesh.windingNumber`/`orientationReport`'s
+/// documented linearity-in-orientation behavior against a known-good fixture.
+func reversedWinding(_ mesh: Mesh) -> Mesh {
+    var indices = mesh.indices
+    var tri = 0
+    while tri + 2 < indices.count {
+        indices.swapAt(tri + 1, tri + 2)
+        tri += 3
+    }
+    return Mesh(vertices: mesh.vertices, indices: indices)!
+}
+
+/// A flat square plate (`size × size` grid vertices, `spacing` apart, `z = 0`) with a raised
+/// rectangular "mesa" in its interior (`z = height` over `[innerLo, innerHi]` in both grid
+/// indices) — the one-cell-wide transition band between the two flat levels is a steep,
+/// tilted collar whose triangles fold sharply against BOTH the base and the top, forming two
+/// nested closed crease rings under `Mesh.creaseEdges`' default 30° threshold: the outer
+/// base/collar boundary and the inner collar/top boundary. Welded by construction (shared grid
+/// vertices) — `Mesh.creaseEdges`' precondition.
+func plateauMesh(size: Int = 9, spacing: Float = 1, innerLo: Int = 3, innerHi: Int = 5,
+                 height: Float = 5) -> Mesh {
+    func vertexIndex(_ i: Int, _ j: Int) -> UInt32 { UInt32(j * size + i) }
+    var positions: [SIMD3<Float>] = []
+    for j in 0..<size {
+        for i in 0..<size {
+            let raised = i >= innerLo && i <= innerHi && j >= innerLo && j <= innerHi
+            positions.append(SIMD3(Float(i) * spacing, Float(j) * spacing, raised ? height : 0))
+        }
+    }
+    var indices: [UInt32] = []
+    for j in 0..<(size - 1) {
+        for i in 0..<(size - 1) {
+            let a = vertexIndex(i, j), b = vertexIndex(i + 1, j)
+            let c = vertexIndex(i, j + 1), d = vertexIndex(i + 1, j + 1)
+            indices.append(contentsOf: [a, b, d, a, d, c])
+        }
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}
+
+/// The same raised mesa as `plateauMesh`, but the raised region's index range extends all the
+/// way to the plate's own edge on one side (`innerHi == size - 1`) — that side of the mesa has
+/// no base/collar beyond it at all, so both crease rings open up into PATHS that run off the
+/// mesh's own open boundary there instead of closing into loops. Welded by construction.
+func plateauTouchingEdgeMesh(size: Int = 9, spacing: Float = 1, innerLo: Int = 3, height: Float = 5) -> Mesh {
+    plateauMesh(size: size, spacing: spacing, innerLo: innerLo, innerHi: size - 1, height: height)
 }

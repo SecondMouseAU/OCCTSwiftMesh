@@ -176,6 +176,11 @@ struct IntegrityReportTests {
         #expect(report.eulerCharacteristic == 2)
         #expect(report.components.count == 1)
         #expect(report.components[0].triangleCount == 12)
+        // Regression guard (issue #27/#30 review): weldedUnitCube() originally had two
+        // inward-wound faces — fixed in MeshFixtures.swift, pinned here so it can't regress
+        // silently the way it went unnoticed before any algorithm depended on winding direction.
+        #expect(report.isOrientable)
+        #expect(report.genus == 0)
     }
 
     @Test("A closed, consistently-wound tetrahedron is watertight, orientable, genus 0")
