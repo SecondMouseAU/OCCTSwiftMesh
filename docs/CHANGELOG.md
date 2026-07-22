@@ -40,21 +40,40 @@ self-intersecting input, unlike parity/ray tests. See
 
 ```swift
 print(mesh.windingNumber(at: SIMD3(0, 0, 0)))   // ~1 inside a closed mesh, ~0 outside
-let report = mesh.orientationReport()            // deterministic bbox-exterior sampling
+let report = mesh.orientationReport()            // closed vs. open shell sampled differently
 print(report.looksInverted, report.meanExteriorWinding)
 ```
 
-- **Documents an important, easy-to-miss limitation rather than papering over it:** reversing
-  every triangle's winding negates the winding number everywhere, unconditionally — which means
-  `orientationReport`'s exterior-only sampling is PROVABLY POWERLESS to detect inversion on a
-  closed, watertight mesh (exterior points read exactly 0 either way; only the interior reading
-  flips). It's genuinely useful on open shells instead, where there's no enclosed-volume
-  cancellation guarantee — the primary intended use, matching the OCCTMCP deviation suite's
-  `ambiguousFraction`-near-1.0 heuristic this upgrades.
+- `orientationReport` samples in one of TWO regimes depending on `boundaryLoops().isEmpty`. A
+  CLOSED mesh is sampled at points offset outward from the bounding box, which — a documented,
+  structural fact, not a tuning issue — reads `≈ 0` regardless of orientation (reversing every
+  triangle's winding negates the winding number everywhere, unconditionally, and `0` negated is
+  still `0`); `orientationReport` is therefore provably powerless to detect inversion on a closed,
+  watertight mesh, and says so. An OPEN shell is instead sampled around the AREA-WEIGHTED CENTROID
+  of its own triangles (a position-only quantity, deliberately never derived from face normals —
+  see [docs/algorithms/winding-number.md](algorithms/winding-number.md) for why an
+  orientation-derived probe location is a tautology that can't actually detect anything), which
+  lands inside a bowl/dome/tube-shaped shell's own concavity, where the signal is strong and
+  reliably signed.
+- **This two-regime design replaced a single bounding-box-exterior sampling strategy for both
+  cases, caught in review before merge**: averaged over a full surrounding sphere, an open
+  shell's front-facing and back-facing directions cancel to a mean near zero regardless of
+  orientation — not a weak signal a better threshold could rescue, a structural cancellation.
+  The original test suite exercised negation-symmetry, determinism, and the closed-mesh
+  limitation, but never asserted a real `looksInverted == true` case — the gap that surfaced the
+  bug. `WindingNumberTests.open{Dome,Tube}InversionIsDetected` are now the required positive
+  cases.
 - Complementary to `integrityReport().isOrientable`: that catches inconsistent winding (local
   disagreement between neighbouring triangles); this catches a globally-consistent-but-inside-out
   winding, which `isOrientable` cannot.
-- Deterministic Fibonacci-sphere sample placement, no randomness.
+- Deterministic Fibonacci-sphere sample placement (both regimes), no randomness.
+- **Fixture fixes, also caught in review**: `weldedUnitCube()`/`unweldedUnitCube()` (two of six
+  faces wound inward) and `sphereMesh()` (mixed winding — pole fans outward, band quads inward)
+  were both undetected until this PR's algorithms were the first to depend on winding direction.
+  Fixed directly (verified zero impact on every existing consumer) rather than worked around,
+  with `isOrientable`/`genus`/center-winding regression tests added. `RANSACSegmentOptions`'
+  orientation-agnostic normal gate is kept regardless — real scan meshes routinely have
+  inconsistent winding too, so it's correct on the merits, not merely a fixture workaround.
 
 ### Curvature-ordered, seed-relative growing — `SegmentOptions.curvatureSeeding` ([#29](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/29))
 

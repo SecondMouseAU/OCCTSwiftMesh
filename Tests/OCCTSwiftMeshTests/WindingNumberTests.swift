@@ -6,14 +6,11 @@ import OCCTSwift
 @Suite("Mesh.windingNumber — generalized winding number")
 struct WindingNumberTests {
 
-    // NOTE: these use `orientableTetrahedronMesh()`, not `weldedUnitCube()` — the same fixture
-    // choice `IntegrityReportTests.orientableClosedSurfaceReport` makes, and for the same reason
-    // (see that fixture's doc comment): `weldedUnitCube()`'s face list isn't hand-verified for
-    // CONSISTENT outward winding (nothing before this needed it — topology/dihedral-angle
-    // algorithms don't care, only this one does), and turns out to have exactly one of its 6
-    // faces flipped relative to the other 5 — enclosed-point winding reads a very deliberate
-    // 2/3 there instead of 1, a good demonstration of why this matters but not what these two
-    // tests are checking.
+    // NOTE: `orientableTetrahedronMesh()` was the pre-existing hand-verified fixture for exactly
+    // this need (`IntegrityReportTests.orientableClosedSurfaceReport` already used it for the
+    // same reason) — used below alongside `weldedUnitCube()`, which turned out to have its OWN
+    // orientation bug (two of its six faces wound inward, not the one originally suspected — see
+    // that fixture's doc comment) and has since been fixed and is exercised directly too.
 
     @Test("A point enclosed by a closed, coherently-oriented mesh reads ~1")
     func enclosedPointReadsOne() {
@@ -27,6 +24,19 @@ struct WindingNumberTests {
         let tet = orientableTetrahedronMesh()
         let far = SIMD3<Double>(100, 100, 100)
         #expect(abs(tet.windingNumber(at: far)) < 1e-5)
+    }
+
+    @Test("weldedUnitCube(), now fixed, reads ~1 at its center — regression guard for the fixture fix")
+    func fixedCubeEnclosedPointReadsOne() {
+        let cube = weldedUnitCube()
+        #expect(abs(cube.windingNumber(at: SIMD3(0.5, 0.5, 0.5)) - 1) < 1e-3)
+        #expect(abs(cube.windingNumber(at: SIMD3(100, 100, 100))) < 1e-5)
+    }
+
+    @Test("sphereMesh(), now fixed, reads ~1 at its center — regression guard for the fixture fix")
+    func fixedSphereEnclosedPointReadsOne() {
+        let sphere = sphereMesh(radius: 5)
+        #expect(abs(sphere.windingNumber(at: .zero) - 1) < 1e-2)
     }
 
     @Test("Reversing every triangle's winding negates the winding number everywhere")
@@ -89,20 +99,43 @@ struct OrientationReportTests {
         #expect(!report.looksInverted)
     }
 
-    @Test("Reversing an open shell's winding negates its mean exterior winding exactly")
+    @Test("Reversing an open shell's winding negates its mean winding exactly")
     func openShellReversalNegatesMean() {
-        // meanExteriorWinding is a fixed average over a FIXED sample-point set, and
-        // windingNumber is exactly linear in orientation (see the file header) — so this holds
-        // by construction for ANY mesh, closed or open. What differs for an open shell (vs. the
-        // closed-mesh case above) is that the mean itself need not be near zero to begin with —
-        // see `openShellHollowCenterReadsNonzero` in WindingNumberTests for a fixture/point where
-        // it clearly isn't, since a generic exterior-only sample here can land anywhere from a
-        // strong signal to near-total front/back cancellation depending on the shell's shape and
-        // the sample points' placement relative to it.
+        // meanExteriorWinding is a fixed average over a FIXED sample-point set (the hollow-probe
+        // points are derived from vertex POSITIONS only, never face normals, so the sample set
+        // itself is identical for a mesh and its reversal), and windingNumber is exactly linear
+        // in orientation (see the file header) — so this holds by construction for ANY mesh,
+        // closed or open.
         let dome = domeMesh()
         let a = dome.orientationReport()
         let b = reversedWinding(dome).orientationReport()
         #expect(abs(a.meanExteriorWinding + b.meanExteriorWinding) < 1e-6)
+    }
+
+    @Test("An inverted open dome is flagged; its correctly-oriented twin is not")
+    func openDomeInversionIsDetected() {
+        // domeMesh()'s own default winding happens to be inverted (see its doc comment in
+        // MeshFixtures.swift) — so the DEFAULT reads inverted here and reversedWinding(_:) is
+        // the correctly-oriented one.
+        let invertedReport = domeMesh().orientationReport()
+        #expect(invertedReport.looksInverted)
+        #expect(invertedReport.meanExteriorWinding < -0.25)
+
+        let correctReport = reversedWinding(domeMesh()).orientationReport()
+        #expect(!correctReport.looksInverted)
+        #expect(correctReport.meanExteriorWinding > 0)
+    }
+
+    @Test("An inverted open tube is flagged; its correctly-oriented twin is not")
+    func openTubeInversionIsDetected() {
+        let tube = openCylinderShellMesh(radius: 4, height: 4, segments: 32)
+        let correctReport = tube.orientationReport()
+        #expect(!correctReport.looksInverted)
+        #expect(correctReport.meanExteriorWinding > 0)
+
+        let invertedReport = reversedWinding(tube).orientationReport()
+        #expect(invertedReport.looksInverted)
+        #expect(invertedReport.meanExteriorWinding < -0.25)
     }
 
     @Test("orientationReport is deterministic across repeated calls")

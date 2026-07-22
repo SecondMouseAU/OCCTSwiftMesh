@@ -49,35 +49,70 @@ w_reversed(p) = -w_original(p),  for all p
 This is a pure consequence of linearity, true regardless of the mesh's shape, openness, or
 self-intersection — `WindingNumberTests.reversalNegatesEverywhere` checks it directly.
 
-## `orientationReport(samples:)` — and its closed-mesh limitation
+## `orientationReport(samples:)` — two sampling regimes
 
-Samples `windingNumber` at points offset outward from the mesh's own bounding box (a deterministic
-Fibonacci-sphere spiral around the bbox center, at a radius comfortably beyond the bbox's own
-circumscribing sphere — no randomness, so repeat calls agree exactly), and reports the mean plus a
-`looksInverted` heuristic (mean below a floor calibrated well clear of float noise).
+`orientationReport` branches on `boundaryLoops().isEmpty` (closed vs. open) into two genuinely
+different sampling strategies, because a single strategy cannot serve both cases — see "Why a
+single far-exterior sweep doesn't work" below for the (initially shipped, then reverted) approach
+that looked reasonable but structurally couldn't detect anything on an open shell.
 
-**The important, easy-to-miss caveat, direct from the linearity fact above:** for a genuinely
-closed, watertight mesh, the winding number at any point strictly outside every enclosed volume is
-EXACTLY `0` (the same divergence-theorem fact that makes the method work at all) — regardless of
-orientation, since `0` negated is still `0`. Global inversion instead flips the INTERIOR reading
-(`≈ 1` → `≈ -1`), which this exterior-only diagnostic never samples. **This means
-`orientationReport` is provably powerless to detect inversion on a closed, watertight solid** — a
-caller who needs to check one should sample a point known to be INSIDE it instead (e.g. its
-centroid, for a reasonably convex/blob-shaped body).
+**Closed mesh** (`exteriorSampleMean`): samples `windingNumber` at points offset outward from the
+mesh's own bounding box (a deterministic Fibonacci-sphere spiral around the bbox center, at a
+radius comfortably beyond the bbox's own circumscribing sphere). **The important, easy-to-miss
+caveat, direct from the linearity fact above:** for a genuinely closed, watertight mesh, the
+winding number at any point strictly outside every enclosed volume is EXACTLY `0` (the same
+divergence-theorem fact that makes the method work at all) — regardless of orientation, since `0`
+negated is still `0`. Global inversion instead flips the INTERIOR reading (`≈ 1` → `≈ -1`), which
+this exterior-only sampling never sees. **This means `orientationReport` is provably powerless to
+detect inversion on a closed, watertight solid** — a caller who needs to check one should sample a
+point known to be INSIDE it instead (e.g. its centroid, for a reasonably convex/blob-shaped body).
+This branch exists specifically so that documented limitation stays literally true, rather than
+becoming accidentally (and inconsistently) informative through whatever the open-shell strategy
+happens to do to a closed mesh.
 
-Where this diagnostic IS useful — its primary intended purpose, matching the OCCTMCP deviation
-suite's original motivation (upgrading the `ambiguousFraction`-near-1.0 heuristic) — is an OPEN
-shell: a raw scan surface patch with no enclosed volume at all has no such cancellation guarantee,
-so the winding number away from the shell is generically nonzero and fractional, and its sign
-genuinely tracks which way the shell's visible normals face relative to the sample points. Even
-there, a single generic point (or even a full spherical sweep of exterior points) can land
-anywhere from a strong signal to near-total front/back cancellation depending on the shell's own
-shape and the sample points' placement relative to it — `meanExteriorWinding` reports a robust
-aggregate for exactly this reason, but is not guaranteed to be far from zero for every open shell
-under generic sampling. `WindingNumberTests.openShellHollowCenterReadsNonzero` demonstrates a
-clearly-informative case directly (a point at an open tube's own hollow center, which "sees" the
-whole wall from inside — a large, one-signed solid angle), rather than relying on
-`orientationReport`'s generic bbox-exterior sampling to happen to find one.
+**Open shell** (`hollowSampleMean`): samples clustered around the AREA-WEIGHTED CENTROID of the
+shell's own triangles, jittered by a small deterministic Fibonacci-sphere pattern (a modest
+fraction of the bbox half-diagonal, not the far-exterior sweep's large multiple). The centroid is
+derived ONLY from vertex positions — never from face normals — which matters for a subtle but
+important reason: the probe LOCATION must be identical for a mesh and its reversal, or the
+reversed mesh's own flipped normals could bias where its probes land, breaking the clean
+`w_reversed(p) = -w_original(p)` argument (see "orientation-derived probes are tautological"
+below for what goes wrong if a probe location depends on the very orientation being tested). For a
+shell shaped like a bowl, dome, or tube, that centroid sits inside the concavity — where the
+winding number is large in magnitude and reliably signed, exactly the mechanism
+`WindingNumberTests.openShellHollowCenterReadsNonzero` demonstrates directly (a point at an open
+tube's own hollow center "sees" the whole wall from inside — a large, one-signed solid angle).
+`WindingNumberTests.open{Dome,Tube}InversionIsDetected` are the flagship positive cases: an
+inverted open dome and an inverted open tube both flag `looksInverted == true`; their
+correctly-oriented twins don't.
+
+## Why a single far-exterior sweep doesn't work
+
+An earlier version of this method used ONE strategy for both regimes: sample far outside the
+bounding box, on a full surrounding Fibonacci sphere, for every mesh. That's correct — necessary,
+even — for the closed-mesh case, but is a structural dead end for open shells, not merely an
+undertuned threshold: averaged over a FULL surrounding sphere, directions roughly facing the
+shell's front read positive and directions facing its back read negative by (almost) the same
+amount, so the mean collapses toward zero REGARDLESS of which way the shell is actually wound — a
+70°-cap dome measured this way read `±3.7e-5` for both orientations, five orders of magnitude
+short of any reasonable threshold. No retuning the threshold fixes an average that cancels by
+construction; the sampling itself had to move to where the signal actually lives (the shell's own
+hollow, not its far field).
+
+## Orientation-derived probes are tautological
+
+A tempting alternative for the open-shell regime: offset each sample a small distance from a
+mesh triangle's own centroid, backward along THAT triangle's own face normal (an "into the local
+surface" probe). This looks plausible — near a flat patch, the winding number does read a large,
+reliably-signed local value — but it's a dead end: the probe LOCATION itself depends on the
+triangle's own (potentially flipped) normal, so under a full mesh reversal the probe silently
+moves to the OPPOSITE physical point too. Working through the algebra, `windingNumber` at the
+reversed mesh's own (relocated) probe converges back to very nearly the SAME value the original
+mesh's probe read — the measurement ends up telling you "which side my own normal happens to
+point away from," which is always true by construction and says nothing about whether that normal
+is globally correct. Any viable probe-placement rule must depend only on the mesh's SHAPE (vertex
+positions), never on face normals or vertex winding order, or it risks this same self-referential
+trap. `hollowSampleMean`'s area-weighted centroid is shape-only for exactly this reason.
 
 ## Relationship to `integrityReport().isOrientable`
 

@@ -57,77 +57,143 @@ extension Mesh {
         return sum / (4 * .pi)
     }
 
-    /// Sample the generalized winding number at points offset outward from the mesh's own
-    /// bounding box, to flag a globally inverted winding.
+    /// Sample the generalized winding number to flag a globally inverted winding — at points
+    /// offset outward from the bounding box for a CLOSED mesh, or near the shell's own "hollow"
+    /// for an OPEN one (see "Two sampling regimes" below; `boundaryLoops()` tells them apart).
     ///
-    /// - Parameter samples: number of exterior sample points, placed on a fixed (deterministic,
-    ///   no randomness) Fibonacci-sphere spiral around the bounding box's center, at a radius
-    ///   comfortably beyond the bounding box's own circumscribing sphere — every sample point is
-    ///   therefore strictly outside the mesh, convex or not.
+    /// - Parameter samples: number of sample points (capped/adjusted internally per regime — see
+    ///   each helper below), placed on a fixed (deterministic, no randomness) Fibonacci-sphere
+    ///   pattern so two runs on identical input agree exactly.
     ///
     /// ## Interpretation caveats
     ///
     /// `windingNumber(at:)` is exactly LINEAR in triangle orientation: reversing every triangle's
     /// winding negates `w(p)` at every point `p`, everywhere, unconditionally (a direct
     /// consequence of the solid-angle formula's antisymmetry under swapping two of a triangle's
-    /// three vertices — see the file header). Two consequences follow that matter for reading
-    /// this report correctly:
+    /// three vertices — see the file header). One consequence matters enough to shape this
+    /// method's whole design:
     ///
-    /// 1. **On a genuinely closed, watertight mesh, this exterior-only check cannot detect a
-    ///    global inversion.** A closed mesh's winding number at any point strictly outside every
-    ///    enclosed volume is exactly `0` (the divergence-theorem fact underlying the whole
-    ///    method) — REGARDLESS of orientation, since `w = 0` negated is still `0`. Global
-    ///    inversion instead flips the INTERIOR reading (`≈ 1` → `≈ -1`); a caller who needs to
-    ///    check a closed solid's orientation should sample a point known to be inside it (e.g.
-    ///    its centroid, for a reasonably convex/blob-shaped body), not outside. `isOrientable` on
-    ///    `integrityReport()` is the complementary check here: it catches inconsistent winding
-    ///    (some triangles disagreeing with their neighbours), which this method does not, while
-    ///    this method catches a globally-consistent-but-inside-out winding, which `isOrientable`
-    ///    does not — see that property's doc comment.
-    /// 2. **On an open shell (no enclosed volume at all) — the common case for a raw scan
-    ///    surface patch — exterior sampling IS informative**, because there is no enclosed-volume
-    ///    cancellation guaranteeing `0`: the winding number is fractional and its sign genuinely
-    ///    tracks which way the shell's visible normals face relative to the sample points. This
-    ///    is the primary intended use of this diagnostic. Values also grow fractional (neither
-    ///    cleanly `0` nor `±1`) near an opening even on an otherwise mostly-closed shape, which is
-    ///    why `meanExteriorWinding` reports a robust aggregate (the mean over many samples) rather
-    ///    than any single sample.
+    /// **On a genuinely closed, watertight mesh, EXTERIOR sampling cannot detect a global
+    /// inversion, structurally, not just as a tuning issue.** A closed mesh's winding number at
+    /// any point strictly outside every enclosed volume is exactly `0` (the divergence-theorem
+    /// fact underlying the whole method) — REGARDLESS of orientation, since `0` negated is still
+    /// `0`. Global inversion instead flips the INTERIOR reading (`≈ 1` → `≈ -1`), which exterior
+    /// sampling never sees. `isOrientable` on `integrityReport()` is the complementary check
+    /// here: it catches inconsistent winding (some triangles disagreeing with their neighbours),
+    /// which this method does not, while this method catches a globally-consistent-but-inside-out
+    /// winding, which `isOrientable` does not — see that property's doc comment.
+    ///
+    /// ## Two sampling regimes
+    ///
+    /// **Closed mesh** (`boundaryLoops().isEmpty`): samples the bounding-box-EXTERIOR pattern —
+    /// provably reads `≈ 0` regardless of orientation, per the caveat above. This branch exists
+    /// so the documented limitation stays literally true rather than becoming accidentally
+    /// informative through some other mechanism — a caller who needs to check a closed solid's
+    /// orientation should sample a point known to be INSIDE it instead (e.g. its centroid, for a
+    /// reasonably convex/blob-shaped body).
+    ///
+    /// **Open shell**: bounding-box-exterior sampling here structurally cancels for ANY open
+    /// shell regardless of orientation — averaged over a full surrounding sphere, directions
+    /// facing the shell's front read positive and directions facing its back read negative by
+    /// (almost) the same amount, so the mean collapses toward zero no matter which way the shell
+    /// is actually wound. This is not a threshold problem; no amount of retuning `-0.25` fixes an
+    /// average that cancels by construction. Instead, this branch samples near the shell's own
+    /// "hollow" — points clustered around the AREA-WEIGHTED CENTROID of the shell's own triangles
+    /// (a position derived ONLY from vertex positions, deliberately never from face normals: the
+    /// probe location must be IDENTICAL for a mesh and its reversal, or the reversed mesh's own
+    /// flipped normals could bias where its own probes land, defeating the "windingNumber at an
+    /// orientation-independent point negates exactly under reversal" argument this whole
+    /// diagnostic leans on). For a shell shaped like a bowl, dome, or tube, that centroid sits
+    /// inside the concavity, where the winding number is large in magnitude and reliably signed —
+    /// see `WindingNumberTests.openShellHollowCenterReadsNonzero` for the mechanism directly.
     public func orientationReport(samples: Int = 64) -> OrientationReport {
         let verts = vertices
-        guard !verts.isEmpty, triangleCount > 0, samples > 0 else {
+        let idx = indices
+        let tc = triangleCount
+        guard !verts.isEmpty, tc > 0, samples > 0 else {
             return OrientationReport(looksInverted: false, meanExteriorWinding: 0)
         }
 
         var lo = verts[0], hi = verts[0]
         for p in verts { lo = simd_min(lo, p); hi = simd_max(hi, p) }
-        let center = SIMD3<Double>((lo + hi) * 0.5)
         let halfDiagonal = Double(simd_length(hi - lo)) * 0.5
-        // Comfortably beyond the bounding SPHERE (radius == half the bbox diagonal), so every
-        // sample point is strictly outside the mesh regardless of its shape; the absolute floor
-        // covers the degenerate zero-size-bbox case (a single point / a coincident cluster).
-        let sampleRadius = max(2.0 * halfDiagonal, 1e-6)
 
-        // Deterministic Fibonacci-sphere spiral — evenly distributed sample directions with no
-        // randomness, so two runs on identical input agree exactly.
-        var windings: [Double] = []
-        windings.reserveCapacity(samples)
+        let mean: Double
+        if boundaryLoops().isEmpty {
+            mean = exteriorSampleMean(samples: samples, halfDiagonal: halfDiagonal)
+        } else {
+            mean = hollowSampleMean(samples: samples, halfDiagonal: halfDiagonal,
+                                    vertices: verts, indices: idx, triangleCount: tc)
+        }
+        // A correctly-oriented mesh reads ~0 (closed, by the caveat above) or a non-negative
+        // value (open shell, near its own hollow); a clearly negative mean is the inversion
+        // signal. -0.25 sits well clear of float noise around 0 while comfortably under the
+        // ~0.3+ magnitudes a genuinely inverted open shell's hollow-probe mean shows in practice.
+        let looksInverted = mean < -0.25
+        return OrientationReport(looksInverted: looksInverted, meanExteriorWinding: mean)
+    }
+
+    /// The CLOSED-mesh sampling regime: a fixed Fibonacci-sphere spiral around the bounding box's
+    /// center, at a radius comfortably beyond the bbox's own circumscribing sphere — every sample
+    /// point is therefore strictly outside the mesh, convex or not, and (per the caveat on
+    /// `orientationReport`) provably reads `≈ 0` regardless of orientation.
+    private func exteriorSampleMean(samples: Int, halfDiagonal: Double) -> Double {
+        var lo = vertices[0], hi = vertices[0]
+        for p in vertices { lo = simd_min(lo, p); hi = simd_max(hi, p) }
+        let center = SIMD3<Double>((lo + hi) * 0.5)
+        // The absolute floor covers the degenerate zero-size-bbox case (a coincident cluster).
+        let radius = max(2.0 * halfDiagonal, 1e-6)
+        var sum = 0.0
+        for direction in Mesh.fibonacciSphereDirections(samples) {
+            sum += windingNumber(at: center + direction * radius)
+        }
+        return sum / Double(samples)
+    }
+
+    /// The OPEN-shell sampling regime: points clustered around the shell's own area-weighted
+    /// triangle centroid — a position-only quantity (never derived from face normals; see
+    /// `orientationReport`'s doc comment for why that matters) that lands inside the concavity
+    /// for a bowl/dome/tube-shaped shell, where the winding number is large and reliably signed.
+    /// A small jitter (a fixed fraction of the bbox half-diagonal) around that single point gives
+    /// `samples` genuinely different-but-nearby probes to average, rather than repeating one
+    /// point — still anchored close enough to the hollow to stay clear of the far-field
+    /// cancellation `exteriorSampleMean` is subject to.
+    private func hollowSampleMean(samples: Int, halfDiagonal: Double, vertices: [SIMD3<Float>],
+                                  indices: [UInt32], triangleCount tc: Int) -> Double {
+        var weightedSum = SIMD3<Double>.zero
+        var totalArea = 0.0
+        for t in 0..<tc {
+            let base = t * 3
+            let a = vertices[Int(indices[base])], b = vertices[Int(indices[base + 1])], c = vertices[Int(indices[base + 2])]
+            let area = Double(simd_length(simd_cross(b - a, c - a))) * 0.5
+            weightedSum += SIMD3<Double>(a + b + c) * (Double(1) / 3) * area
+            totalArea += area
+        }
+        guard totalArea > 1e-15 else { return 0 }
+        let centroid = weightedSum / totalArea
+
+        let jitterRadius = max(0.15 * halfDiagonal, 1e-6)
+        var sum = 0.0
+        for direction in Mesh.fibonacciSphereDirections(samples) {
+            sum += windingNumber(at: centroid + direction * jitterRadius)
+        }
+        return sum / Double(samples)
+    }
+
+    /// `samples` unit directions on a fixed Fibonacci-sphere spiral — deterministic (no
+    /// randomness), evenly distributed, shared by both `orientationReport` sampling regimes.
+    static func fibonacciSphereDirections(_ samples: Int) -> [SIMD3<Double>] {
+        guard samples > 0 else { return [] }
+        var directions: [SIMD3<Double>] = []
+        directions.reserveCapacity(samples)
         let angleStep = Double.pi * (3.0 - (5.0).squareRoot())
+        let denom = Double(max(1, samples - 1))
         for i in 0..<samples {
-            let denom = Double(max(1, samples - 1))
             let y = 1.0 - (Double(i) / denom) * 2.0   // 1 down to -1
             let radiusAtY = (max(0, 1 - y * y)).squareRoot()
             let theta = angleStep * Double(i)
-            let direction = SIMD3<Double>(cos(theta) * radiusAtY, y, sin(theta) * radiusAtY)
-            let sample = center + direction * sampleRadius
-            windings.append(windingNumber(at: sample))
+            directions.append(SIMD3(cos(theta) * radiusAtY, y, sin(theta) * radiusAtY))
         }
-
-        let mean = windings.reduce(0, +) / Double(windings.count)
-        // A correctly-oriented mesh reads ~0 (closed) or a small/non-negative fractional value
-        // (open shell) at true exterior points; a clearly negative mean is the inversion signal
-        // the file-header caveats describe. -0.25 sits well clear of float noise around 0 while
-        // still catching a shell whose reversed winding pulls the mean substantially negative.
-        let looksInverted = mean < -0.25
-        return OrientationReport(looksInverted: looksInverted, meanExteriorWinding: mean)
+        return directions
     }
 }
