@@ -424,6 +424,172 @@ func flatWithBumpMesh(size: Float = 40, segments: Int = 40, bumpCenter: SIMD2<Fl
     return Mesh(vertices: positions, indices: indices)!
 }
 
+/// A UV sphere (lat/long grid, poles collapsed to single vertices) — welded by construction.
+func sphereMesh(radius: Float = 5, latSegments: Int = 12, lonSegments: Int = 16) -> Mesh {
+    var positions: [SIMD3<Float>] = []
+    let northPole = UInt32(0); positions.append(SIMD3(0, 0, radius))
+    for i in 1..<latSegments {
+        let theta = Float(i) / Float(latSegments) * .pi   // 0 (north) ... pi (south)
+        let z = radius * cos(theta), r = radius * sin(theta)
+        for j in 0..<lonSegments {
+            let phi = Float(j) / Float(lonSegments) * 2 * .pi
+            positions.append(SIMD3(r * cos(phi), r * sin(phi), z))
+        }
+    }
+    let southPole = UInt32(positions.count); positions.append(SIMD3(0, 0, -radius))
+
+    func ring(_ i: Int, _ j: Int) -> UInt32 { UInt32(1 + (i - 1) * lonSegments + (j % lonSegments)) }
+
+    var indices: [UInt32] = []
+    for j in 0..<lonSegments {
+        indices.append(contentsOf: [northPole, ring(1, j), ring(1, j + 1)])
+    }
+    for i in 1..<(latSegments - 1) {
+        for j in 0..<lonSegments {
+            let a = ring(i, j), b = ring(i, j + 1), c = ring(i + 1, j), d = ring(i + 1, j + 1)
+            indices.append(contentsOf: [a, b, d, a, d, c])
+        }
+    }
+    for j in 0..<lonSegments {
+        indices.append(contentsOf: [southPole, ring(latSegments - 1, j + 1), ring(latSegments - 1, j)])
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}
+
+/// The lateral (side) surface only of a cone, as a multi-ring stack tapering to the apex (NOT a
+/// single fan from one apex vertex — a fan only samples 2 distinct heights (apex + base rim),
+/// too degenerate a point set to expose the surface's true 1-parameter rotational symmetry
+/// without spurious extra ones). A genuine surface of revolution, distinct from a cylinder
+/// because its radius varies along the axis. Welded by construction (shared ring vertices).
+func coneLateralMesh(baseRadius: Float = 4, height: Float = 10, segments: Int = 16, rings: Int = 8) -> Mesh {
+    var positions: [SIMD3<Float>] = []
+    for k in 0..<rings {
+        let t = Float(k) / Float(rings - 1)   // 0 at base, 1 near the apex
+        let z = t * height
+        let r = baseRadius * (1 - t)
+        for i in 0..<segments {
+            let a = Float(i) / Float(segments) * 2 * .pi
+            positions.append(SIMD3(r * cos(a), r * sin(a), z))
+        }
+    }
+    var indices: [UInt32] = []
+    for k in 0..<(rings - 1) {
+        let lo = UInt32(k * segments), hi = UInt32((k + 1) * segments)
+        for i in 0..<segments {
+            let a = lo + UInt32(i), b = lo + UInt32((i + 1) % segments)
+            let c = hi + UInt32(i), d = hi + UInt32((i + 1) % segments)
+            indices.append(contentsOf: [a, b, c, b, d, c])
+        }
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}
+
+/// The lateral surface of a triangular prism — flat quad faces only (no end caps), extruded
+/// along +Z as a multi-ring stack, each ring's profile subdivided along every edge (NOT just the
+/// 3 corners repeated per ring: EVERY vertex of a 3-corners-only profile sits exactly on a sharp
+/// crease between two faces, so `vertexNormals()`'s area-weighted averaging blends the two
+/// adjacent faces' very different normals at every single sample — there are no "interior",
+/// single-face-normal points to sample at all. Subdividing each edge gives most vertices a clean,
+/// unblended normal, the way any real coarsely-triangulated flat face would.) A non-circular
+/// cross-section rules out any rotational symmetry, leaving pure translation as the only
+/// slippable motion. Welded by construction.
+///
+/// Default `height` is deliberately modest relative to the ~4-unit base: slippage analysis
+/// normalizes a region's points to a UNIT BOX by a single isotropic scale factor (see
+/// `docs/algorithms/slippage.md`), so a MUCH taller/thinner prism (say height 50 against a base
+/// of 4) has its cross-sectional extent shrink toward zero in normalized coordinates — at extreme
+/// aspect ratios the triangular cross-section becomes a vanishingly small perturbation and the
+/// prism genuinely starts to APPROXIMATE a rotationally-symmetric (cylinder-like) shape in the
+/// normalized frame. That's a real property of the normalization, not a bug; this fixture just
+/// avoids the regime where it dominates.
+func triangularPrismLateralMesh(height: Float = 4, rings: Int = 8, edgeSegments: Int = 6) -> Mesh {
+    let base: [SIMD2<Float>] = [SIMD2(0, 0), SIMD2(4, 0), SIMD2(1, 3)]
+    let sides = base.count * edgeSegments
+    func profilePoint(_ i: Int) -> SIMD2<Float> {
+        let edge = i / edgeSegments
+        let t = Float(i % edgeSegments) / Float(edgeSegments)
+        let a = base[edge], b = base[(edge + 1) % base.count]
+        return a + (b - a) * t
+    }
+    var positions: [SIMD3<Float>] = []
+    for k in 0..<rings {
+        let z = Float(k) / Float(rings - 1) * height
+        for i in 0..<sides { let p = profilePoint(i); positions.append(SIMD3(p.x, p.y, z)) }
+    }
+    var indices: [UInt32] = []
+    for k in 0..<(rings - 1) {
+        let lo = UInt32(k * sides), hi = UInt32((k + 1) * sides)
+        for i in 0..<sides {
+            let a = lo + UInt32(i), b = lo + UInt32((i + 1) % sides)
+            let c = hi + UInt32(i), d = hi + UInt32((i + 1) % sides)
+            indices.append(contentsOf: [a, b, c, b, d, c])
+        }
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}
+
+/// A helicoid strip: `(v·cos(u), v·sin(u), pitch·u / 2π)` for `v ∈ [innerRadius, outerRadius]`,
+/// `u` over several full turns — the textbook screw-symmetric ruled surface (rotating by du about
+/// Z while translating by `pitch·du/2π` along Z maps the surface exactly onto itself). Welded by
+/// construction (shared grid vertices).
+///
+/// Default `pitch`/`turns` were tuned empirically, not picked arbitrarily: as `pitch → 0` (with
+/// several turns), the strip degenerates toward a near-planar spiral ramp and genuinely PICKS UP
+/// plane-like extra near-degeneracy (a real property of the surface, not a fixture bug — a
+/// gently-pitched ramp really does locally resemble a plane); too LARGE a `pitch` relative to
+/// `outerRadius - innerRadius`, on the other hand, drifts into the same unit-box-normalization
+/// aspect-ratio sensitivity documented on `triangularPrismLateralMesh`. `pitch: 20, turns: 3`
+/// (height 60 against a radius span of 3) sits well inside the correctly-classified middle.
+func helicoidStripMesh(innerRadius: Float = 2, outerRadius: Float = 5, pitch: Float = 20,
+                       turns: Float = 3, uSegments: Int = 192, vSegments: Int = 12) -> Mesh {
+    var positions: [SIMD3<Float>] = []
+    for i in 0...uSegments {
+        let u = Float(i) / Float(uSegments) * turns * 2 * .pi
+        let z = pitch * u / (2 * .pi)
+        for j in 0...vSegments {
+            let v = innerRadius + Float(j) / Float(vSegments) * (outerRadius - innerRadius)
+            positions.append(SIMD3(v * cos(u), v * sin(u), z))
+        }
+    }
+    let cols = vSegments + 1
+    var indices: [UInt32] = []
+    for i in 0..<uSegments {
+        for j in 0..<vSegments {
+            let a = UInt32(i * cols + j), b = UInt32(i * cols + j + 1)
+            let c = UInt32((i + 1) * cols + j), d = UInt32((i + 1) * cols + j + 1)
+            indices.append(contentsOf: [a, b, d, a, d, c])
+        }
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}
+
+/// A spherical dome (a polar cap, NOT a full sphere) centered at an arbitrary, off-origin
+/// `center` — the partial-sphere zone a real segmentation region actually looks like (e.g. a
+/// scanned dome/boss), as opposed to `sphereMesh()`'s full, origin-centered sphere. Welded by
+/// construction (shared ring vertices, apex shared by the top fan).
+func domeMesh(center: SIMD3<Float> = SIMD3(30, -10, 5), radius: Float = 5, capAngleDegrees: Float = 50,
+             latSegments: Int = 24, lonSegments: Int = 36) -> Mesh {
+    var positions: [SIMD3<Float>] = []
+    let capAngle = capAngleDegrees * .pi / 180
+    for i in 0...latSegments {
+        let theta = Float(i) / Float(latSegments) * capAngle
+        let z = radius * cos(theta), r = radius * sin(theta)
+        for j in 0..<lonSegments {
+            let phi = Float(j) / Float(lonSegments) * 2 * .pi
+            positions.append(center + SIMD3(r * cos(phi), r * sin(phi), z))
+        }
+    }
+    var indices: [UInt32] = []
+    for i in 0..<latSegments {
+        for j in 0..<lonSegments {
+            let a = UInt32(i * lonSegments + j), b = UInt32(i * lonSegments + (j + 1) % lonSegments)
+            let c = UInt32((i + 1) * lonSegments + j), d = UInt32((i + 1) * lonSegments + (j + 1) % lonSegments)
+            indices.append(contentsOf: [a, b, d, a, d, c])
+        }
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}
+
 /// Applies a rigid transform to every vertex of `mesh`, keeping its indices unchanged.
 func transformedMesh(_ mesh: Mesh, by transform: simd_double4x4) -> Mesh {
     let newPositions = mesh.vertices.map { v -> SIMD3<Float> in

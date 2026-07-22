@@ -2,6 +2,44 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## v1.6.0 — slippage analysis (Gelfand-Guibas)
+
+Adds `Mesh.slippage(forTriangles:maxSamples:)` ([#26](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/26)) — classifies a segmented region's surface kind (plane / sphere / cylinder / extrusion / revolution / helix / freeform) and recovers its characteristic axis, by local slippage analysis (Gelfand & Guibas, SGP 2004). Pure Swift + simd — no vendored library. See [docs/algorithms/slippage.md](algorithms/slippage.md).
+
+```swift
+let result = mesh.slippage(forTriangles: region.triangleIndices)
+print(result.kind, result.axisPoint as Any, result.axisDirection as Any, result.pitch as Any)
+```
+
+- Builds the 6×6 "slippage covariance" of per-sample constraint rows `[p×n, n]`; near-zero
+  eigenvalue RATIOS (relative to the largest, never absolute — patch-extent-independent) mark
+  rigid motions the surface tolerates. The slippable-mode count is chosen by spectral gap (with an
+  absolute and a relative floor), not a fixed threshold comparison.
+- **Classifies the slippable SUBSPACE, not each eigenvector, whenever more than one mode is
+  slippable** (plane's 3-D null space, cylinder's 2-D) — the rank of the Gram matrix over the
+  slippable eigenvectors' rotational parts, and the axis/center-recovery formulas, are all provably
+  invariant to which particular orthonormal basis of that subspace the eigensolver returns. A
+  naive per-eigenvector classification looks correct against any axis-aligned test fixture (the
+  null space happens to line up with the coordinate axes there) but silently misclassifies a
+  rotated or translated plane/cylinder/sphere, since a linear subspace's basis is arbitrary and the
+  eigensolver's particular choice is an artifact of tessellation noise, not the surface. See
+  "Basis invariance" in [docs/algorithms/slippage.md](algorithms/slippage.md).
+- `Linalg.eigenSymmetric(_:)` — a new N×N generalization of the existing `eigenSymmetric3`'s
+  classical Jacobi eigensolver, reused here for the 6×6 covariance and the 3×3 Gram matrix.
+- Per-vertex sample weighting (barycentric area lumping, as in a mass matrix) so densely
+  tessellated sub-patches (e.g. a UV sphere's pole rings) don't bias the covariance away from the
+  continuous surface integral it approximates.
+- Points are normalized to a unit box (a single ISOTROPIC scale factor, to stay rotation-invariant)
+  before eigen-analysis; axis points and pitch are converted back to the mesh's real coordinate
+  frame afterward. A consequence of the isotropic choice: a region elongated far beyond its
+  cross-section can genuinely approach an approximate axial symmetry in the normalized frame — see
+  "Elongated regions" in the algorithm doc.
+- Like `triangleAdjacency()`/`connectedComponents()`, operates on THIS mesh's own vertex/normal
+  arrays with no internal welding — callers pass an already-welded mesh.
+- Deterministic: the same even-stride `maxSamples` subsample as ICP, and `eigenSymmetric`'s
+  classical (largest-off-diagonal-element) Jacobi sweep, are both free of unordered-collection
+  iteration or randomness.
+
 ## v1.5.0 — point-to-plane ICP alignment
 
 Adds `Mesh.aligned(to:options:)` ([#22](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/22)) — point-to-plane ICP registration (PCA pre-align, normal-space sampling, trimmed correspondence), pure Swift + simd, no vendored library. See [docs/algorithms/alignment.md](algorithms/alignment.md).

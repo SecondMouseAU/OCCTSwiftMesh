@@ -22,7 +22,7 @@ OCCTSwift itself stays focused on its mission as an OCCT wrapper. Mesh algorithm
 
 ## Status
 
-✅ **v1.5.0** — SemVer-stable. Ships `Mesh.simplified(_:)` (decimation, vendored [meshoptimizer](https://github.com/zeux/meshoptimizer) v1.1), `Mesh.crossSection(plane:)` (planar slicing into closed contours), the mesh connectivity toolkit (`welded`, `faceNormals`, `vertexNormals`, `triangleAdjacency`, `connectedComponents`, `subMesh`, `boundaryLoops`, `integrityReport`), `Mesh.segmented(_:)` (dihedral region-growing + primitive-fit merge), `Mesh.vertexCurvatures()` (Rusinkiewicz per-face curvature tensor), and `Mesh.aligned(to:options:)` (point-to-plane ICP registration). Requires OCCTSwift v1.12.9 or later. See [docs/CHANGELOG.md](docs/CHANGELOG.md).
+✅ **v1.6.0** — SemVer-stable. Ships `Mesh.simplified(_:)` (decimation, vendored [meshoptimizer](https://github.com/zeux/meshoptimizer) v1.1), `Mesh.crossSection(plane:)` (planar slicing into closed contours), the mesh connectivity toolkit (`welded`, `faceNormals`, `vertexNormals`, `triangleAdjacency`, `connectedComponents`, `subMesh`, `boundaryLoops`, `integrityReport`), `Mesh.segmented(_:)` (dihedral region-growing + primitive-fit merge), `Mesh.vertexCurvatures()` (Rusinkiewicz per-face curvature tensor), `Mesh.aligned(to:options:)` (point-to-plane ICP registration), and `Mesh.slippage(forTriangles:maxSamples:)` (Gelfand-Guibas slippage analysis). Requires OCCTSwift v1.12.9 or later. See [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## API
 
@@ -134,6 +134,19 @@ for c in welded.vertexCurvatures() {
 // vertexNormals()'s own outward-normal convention. A face too degenerate/sliver-thin for a
 // stable fit is excluded from it entirely; a vertex touched only by such faces reports
 // k1 == k2 == 0, never NaN.
+```
+
+### Slippage analysis — `Mesh.slippage(forTriangles:maxSamples:)`
+
+Classifies a segmented region's surface kind (plane / sphere / cylinder / extrusion / revolution /
+helix / freeform) and recovers its characteristic axis, by local slippage analysis (Gelfand &
+Guibas, SGP 2004). Like `triangleAdjacency()`, operates on this mesh's own vertex/normal arrays —
+pass an already-welded mesh.
+
+```swift
+let result = mesh.slippage(forTriangles: region.triangleIndices)
+print(result.kind, result.axisPoint as Any, result.axisDirection as Any)
+// .helix additionally sets result.pitch (translation per radian of rotation)
 ```
 
 ## Installation
