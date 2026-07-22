@@ -126,6 +126,35 @@ struct OrientationReportTests {
         #expect(correctReport.meanExteriorWinding > 0)
     }
 
+    @Test("The reviewer's own reproduction case (a deep, origin-centered dome) is detected correctly")
+    func reviewerReproductionDomeInversionIsDetected() {
+        // The exact fixture parameters from the PR #32 review's scratch reproduction of the
+        // original bug (a 70°-cap dome centered at the origin, vs. openDomeInversionIsDetected's
+        // default 50°-cap, off-origin one) — kept as its own test since it's a different enough
+        // shape to be worth pinning independently, not merely a duplicate.
+        //
+        // POLARITY NOTE: the review's own snippet asserted the raw `domeMesh(...)` call was the
+        // CORRECTLY-oriented one and a manually index-flipped copy was the inverted one — written
+        // before the later fixture-audit comment established that domeMesh()'s own default
+        // winding is inward regardless of which parameters it's called with (same root cause as
+        // sphereMesh(), see MeshFixtures.swift). Verified empirically here: the raw call reads
+        // `looksInverted == true`; the manually-flipped copy is the correctly-oriented one — the
+        // opposite of the original snippet's assumed labels, now corrected.
+        let dome = domeMesh(center: SIMD3<Float>(0, 0, 0), radius: 5, capAngleDegrees: 70)
+        let flippedIndices = stride(from: 0, to: dome.indices.count, by: 3).flatMap {
+            [dome.indices[$0], dome.indices[$0 + 2], dome.indices[$0 + 1]]
+        }
+        let flipped = Mesh(vertices: dome.vertices, indices: flippedIndices)!
+
+        let domeReport = dome.orientationReport()
+        #expect(domeReport.looksInverted)
+        #expect(domeReport.meanExteriorWinding < -0.25)
+
+        let flippedReport = flipped.orientationReport()
+        #expect(!flippedReport.looksInverted)
+        #expect(flippedReport.meanExteriorWinding > 0)
+    }
+
     @Test("An inverted open tube is flagged; its correctly-oriented twin is not")
     func openTubeInversionIsDetected() {
         let tube = openCylinderShellMesh(radius: 4, height: 4, segments: 32)
