@@ -2,6 +2,117 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## v1.7.0 — Phase 3 mesh-analysis expansion: creases, winding number, curvature seeding, RANSAC
+
+Four features from the OCCTMCP mesh-analysis expansion (Phase 3), consumed by
+`detect_mesh_features`, `mesh_diagnose`, `segment_mesh_zones`, and `fit_primitives`:
+
+### Crease-edge detection — `Mesh.creaseEdges(minAngleDegrees:)` ([#28](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/28))
+
+Finds dihedral-fold edges (fold angle >= threshold, default 30°) and chains them into rings
+(closed loops, e.g. a door outline) and paths (open chains, e.g. a crease running off an open
+boundary), outlining recessed/raised features on raw scan meshes. See
+[docs/algorithms/crease-detection.md](algorithms/crease-detection.md).
+
+```swift
+let result = mesh.creaseEdges()   // requires a WELDED mesh
+for ring in result.rings {
+    print(ring.closed, ring.vertexIndices.count, ring.length, ring.meanFoldAngleDegrees)
+}
+print(result.unchainedCreaseEdgeCount)   // never silent
+```
+
+- Chaining follows `boundaryLoops()`'s exact determinism discipline, with one addition: a walk
+  never wanders through a junction (3+ creases meeting a vertex) — it stops the instant it
+  reaches one, splitting a Y-/T-shaped intersection deterministically instead of picking an
+  arbitrary continuation.
+- Returns `CreaseDetectionResult` (rings + `unchainedCreaseEdgeCount`), not a bare array — the
+  `SegmentedMesh` convention of pairing the primary result with a never-silent diagnostic count.
+- `length`/`bbox` are in the mesh's own units (no `Mm` suffix, despite the tracking issue's initial
+  sketch) — consistent with every other length-valued field in this package.
+
+### Generalized winding number — `Mesh.windingNumber(at:)`, `Mesh.orientationReport(samples:)` ([#30](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/30))
+
+Jacobson/Kavan/Sorkine-Hornung's generalized winding number: a direct solid-angle sum (van
+Oosterom–Strackee per-triangle formula) that stays well-behaved on open shells, soup, and
+self-intersecting input, unlike parity/ray tests. See
+[docs/algorithms/winding-number.md](algorithms/winding-number.md).
+
+```swift
+print(mesh.windingNumber(at: SIMD3(0, 0, 0)))   // ~1 inside a closed mesh, ~0 outside
+let report = mesh.orientationReport()            // deterministic bbox-exterior sampling
+print(report.looksInverted, report.meanExteriorWinding)
+```
+
+- **Documents an important, easy-to-miss limitation rather than papering over it:** reversing
+  every triangle's winding negates the winding number everywhere, unconditionally — which means
+  `orientationReport`'s exterior-only sampling is PROVABLY POWERLESS to detect inversion on a
+  closed, watertight mesh (exterior points read exactly 0 either way; only the interior reading
+  flips). It's genuinely useful on open shells instead, where there's no enclosed-volume
+  cancellation guarantee — the primary intended use, matching the OCCTMCP deviation suite's
+  `ambiguousFraction`-near-1.0 heuristic this upgrades.
+- Complementary to `integrityReport().isOrientable`: that catches inconsistent winding (local
+  disagreement between neighbouring triangles); this catches a globally-consistent-but-inside-out
+  winding, which `isOrientable` cannot.
+- Deterministic Fibonacci-sphere sample placement, no randomness.
+
+### Curvature-ordered, seed-relative growing — `SegmentOptions.curvatureSeeding` ([#29](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/29))
+
+Opt-in (`false` default). Orders `segmented(_:)`'s region-growing seeds by ascending per-face
+curvature AND switches the absorption test from pairwise-adjacent to seed-relative, so flat
+regions claim their full extent before a high-curvature blend strip (a fillet, a transition) gets
+absorbed arbitrarily by whichever neighbour's flood reached it first. See
+[docs/algorithms/segmentation.md](algorithms/segmentation.md)'s new section.
+
+- **A design correction from the tracking issue's literal ask:** reordering seeds ALONE, under the
+  existing pairwise absorption rule, is a graph-connectivity invariant — it can provably never
+  change which triangles end up grouped together (two regions can't contend for a triangle under
+  a rule that doesn't distinguish who's asking). Making seed order actually matter requires the
+  absorption test to become seed-relative too, a genuine (opt-in) change to the growing rule
+  itself, not just an ordering tweak.
+- Reuses the SAME welded intermediate `segmented(_:)` already builds for adjacency to compute
+  `vertexCurvatures()` on — no second weld.
+
+### RANSAC segmentation + auto-selection — `Mesh.segmentedRANSAC(_:)`, `Mesh.segmentedAutoSelect(dihedral:ransac:)` ([#27](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/27))
+
+Schnabel-style iterative primitive extraction: claims a candidate's inliers across the WHOLE
+remaining mesh, not just triangles contiguous with the sample — the right model for a scene where
+the same primitive kind appears in several disconnected patches, complementing `segmented(_:)`'s
+single-integrated-part strength. Returns `SegmentedMesh`, the same result type as `segmented(_:)`.
+See [docs/algorithms/ransac-segmentation.md](algorithms/ransac-segmentation.md).
+
+```swift
+let result = mesh.segmentedRANSAC()
+let auto = mesh.segmentedAutoSelect()   // runs both strategies, keeps the higher-scoring one
+print(auto.strategy, auto.dihedralScore, auto.ransacScore)
+```
+
+- Candidate generation is a documented simplification vs. Schnabel's closed-form minimal sets: a
+  small deterministic sample reused through the existing `PrimitiveFitter.allFits`/`bestFit`
+  least-squares machinery, trading a little candidate-generation speed for numerical robustness
+  and code reuse.
+- **`PrimitiveFitter.allFits`** (new) exposes every fit kind a sample supports, unfiltered by
+  `bestFit`'s own simplicity bias — that bias, tuned for region-sized point sets, would otherwise
+  silently starve sphere/cylinder/cone candidates from ever being proposed for a small sample (a
+  local patch of any smooth curved surface looks nearly flat up close). The GLOBAL inlier count
+  is the true arbiter instead.
+- A round refits the winning candidate's OWN primitive kind against its full (not sample-sized)
+  inlier set before clustering — skipping this step empirically fragments one true surface across
+  several rounds, each only as accurate as its own noisy small sample.
+- The normal-deviation inlier gate is orientation-agnostic (`|cos deviation|`) — a triangle with
+  flipped or unknown winding still lies tangent to the fitted surface, and real scan meshes
+  routinely have inconsistent global winding (the exact motivation for `windingNumber`, above).
+- `clusterEpsilon` (spatial proximity, grid-hash union-find) auto-derives from the mesh's own mean
+  edge length, distinct from `inlierEpsilon`'s bbox-diagonal-relative fit tolerance — connectivity
+  should scale with tessellation density, not overall model size.
+- Deterministic: `Mesh.deterministicSample(trial:poolSize:sampleSize:)` (a splitmix64 hash keyed
+  by trial number) replaces an earlier sliding-window design that only ever offered as many
+  distinct candidates as the remaining pool size — too few to escape a tiny multi-primitive pool
+  (e.g. a 12-triangle box's 6 separate faces) reliably.
+- The bake-off metric is "substantial-clean coverage" (area covered by regions that are both large
+  enough and well-fit) — matching this package's existing segmentation-quality vocabulary; ties
+  favor `dihedral`, the cheaper strategy.
+
 ## v1.6.0 — slippage analysis (Gelfand-Guibas)
 
 Adds `Mesh.slippage(forTriangles:maxSamples:)` ([#26](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/26)) — classifies a segmented region's surface kind (plane / sphere / cylinder / extrusion / revolution / helix / freeform) and recovers its characteristic axis, by local slippage analysis (Gelfand & Guibas, SGP 2004). Pure Swift + simd — no vendored library. See [docs/algorithms/slippage.md](algorithms/slippage.md).

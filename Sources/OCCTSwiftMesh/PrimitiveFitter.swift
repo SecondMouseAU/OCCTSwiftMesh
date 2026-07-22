@@ -13,14 +13,7 @@ enum PrimitiveFitter {
     /// wants the truest available geometry, unperturbed by weld snapping.
     static func bestFit(vertices: [SIMD3<Float>], indices: [UInt32], region: MeshRegion,
                         faceNormals: [SIMD3<Float>]) -> FittedPrimitive {
-        let pts = regionPoints(vertices: vertices, indices: indices, region: region)
-        let normals = region.triangleIndices.map { SIMD3<Double>(faceNormals[$0]) }
-
-        var candidates: [FittedPrimitive] = []
-        if let plane = fitPlane(points: pts) { candidates.append(plane) }
-        if let sphere = fitSphere(points: pts) { candidates.append(sphere) }
-        if let cyl = fitCylinder(points: pts, normals: normals) { candidates.append(cyl) }
-        if let cone = fitCone(points: pts, normals: normals) { candidates.append(cone) }
+        var candidates = allFits(vertices: vertices, indices: indices, region: region, faceNormals: faceNormals)
 
         // A cone with a tiny half-angle IS a cylinder the cone fit stole: its extra DOF absorbs
         // scan noise so it always scores >= the cylinder, and the preference tie-break only
@@ -43,6 +36,7 @@ enum PrimitiveFitter {
         // diagonal, not the whole mesh's — a floor scaled by a large body would swamp a small,
         // genuinely-curved region's tiny residual and misclassify a shallow arc as a plane
         // (issue #20 item 4: a big flat body with an R5000-class, few-mm-sagitta roof).
+        let pts = regionPoints(vertices: vertices, indices: indices, region: region)
         var lo = pts.first ?? .zero, hi = pts.first ?? .zero
         for p in pts { lo = simd_min(lo, p); hi = simd_max(hi, p) }
         let regionDiag = simd_length(hi - lo)
@@ -50,6 +44,26 @@ enum PrimitiveFitter {
         let preference: [FittedPrimitive.Kind: Int] = [.plane: 0, .cylinder: 1, .cone: 2, .sphere: 3]
         let acceptable = candidates.filter { $0.residualRMS <= bestRMS * 1.25 + absFloor }
         return acceptable.min { (preference[$0.kind] ?? 9) < (preference[$1.kind] ?? 9) }!
+    }
+
+    /// Every primitive kind that fit at all (plane/sphere/cylinder/cone), unfiltered by
+    /// `bestFit`'s simplicity-biased tie-break — for callers that need to judge candidates by a
+    /// criterion OTHER than local residual (e.g. `Mesh.segmentedRANSAC`'s global inlier count):
+    /// `bestFit` alone would silently prefer "plane" for almost any SMALL local sample of a
+    /// smooth curved surface (a small patch of a large sphere looks nearly flat up close, so its
+    /// own residual ties with the true sphere fit's), hiding the sphere/cylinder/cone candidates
+    /// RANSAC needs a chance to score independently.
+    static func allFits(vertices: [SIMD3<Float>], indices: [UInt32], region: MeshRegion,
+                        faceNormals: [SIMD3<Float>]) -> [FittedPrimitive] {
+        let pts = regionPoints(vertices: vertices, indices: indices, region: region)
+        let normals = region.triangleIndices.map { SIMD3<Double>(faceNormals[$0]) }
+
+        var candidates: [FittedPrimitive] = []
+        if let plane = fitPlane(points: pts) { candidates.append(plane) }
+        if let sphere = fitSphere(points: pts) { candidates.append(sphere) }
+        if let cyl = fitCylinder(points: pts, normals: normals) { candidates.append(cyl) }
+        if let cone = fitCone(points: pts, normals: normals) { candidates.append(cone) }
+        return candidates
     }
 
     // MARK: Plane

@@ -44,8 +44,31 @@ extension Mesh {
         let normals = Mesh.faceNormals(vertices: weldedPositions, indices: weldedIndices, triangleCount: tc)
         let adjacency = Mesh.triangleAdjacency(indices: weldedIndices, triangleCount: tc)
 
+        // Curvature-ordered seeding (opt-in, issue #29): reuses the SAME welded intermediate
+        // already built above (weldedPositions/weldedIndices) — no second weld — wrapped in a
+        // throwaway Mesh purely so `vertexCurvatures()` (an instance method) can run on it.
+        var seedOrder: [Int]? = nil
+        if options.curvatureSeeding, let weldedMesh = Mesh(vertices: weldedPositions, indices: weldedIndices) {
+            let curvatures = weldedMesh.vertexCurvatures()
+            var faceCurvature = [Double](repeating: 0, count: tc)
+            for t in 0..<tc {
+                let base = t * 3
+                let ia = Int(weldedIndices[base]), ib = Int(weldedIndices[base + 1]), ic = Int(weldedIndices[base + 2])
+                let ka = max(abs(curvatures[ia].k1), abs(curvatures[ia].k2))
+                let kb = max(abs(curvatures[ib].k1), abs(curvatures[ib].k2))
+                let kc = max(abs(curvatures[ic].k1), abs(curvatures[ic].k2))
+                faceCurvature[t] = (ka + kb + kc) / 3
+            }
+            // DETERMINISM: ascending curvature, triangle-index tie-break — matching every other
+            // sort in this package, two runs on identical input must agree exactly.
+            seedOrder = Array(0..<tc).sorted {
+                faceCurvature[$0] != faceCurvature[$1] ? faceCurvature[$0] < faceCurvature[$1] : $0 < $1
+            }
+        }
+
         let seeds = Mesh.segmentSmoothRegions(triangleCount: tc, normals: normals, adjacency: adjacency,
-                                              maxDihedralDegrees: options.maxDihedralDegrees)
+                                              maxDihedralDegrees: options.maxDihedralDegrees, seedOrder: seedOrder,
+                                              seedRelative: options.curvatureSeeding)
             .map { MeshRegion(triangleIndices: $0, area: Mesh.area(ofTriangles: $0, vertices: verts, indices: idx)) }
             .sorted(by: MeshRegion.order)
 
@@ -79,31 +102,62 @@ extension Mesh {
     }
 
     /// Deterministic DFS flood over edge-adjacent triangles, absorbing an unassigned neighbour
-    /// iff its face normal is within `maxDihedralDegrees` of the CURRENT triangle's (a local
-    /// flood, matching the reference implementation) — only adjacent-pair steps are gated, never
-    /// neighbour-vs-seed, so a region tolerates gradual curvature drift well beyond the
-    /// threshold across its extent. Because the pairwise gate is symmetric, region membership is
-    /// exactly the connected component of the "smooth-edge" subgraph (adjacency pairs whose
-    /// normals agree within the threshold) containing the seed: a pure reachability computation
-    /// that doesn't depend on `adjacency[t]`'s internal element order — only on seed order
-    /// (`0..<triangleCount`, deterministic).
+    /// iff its face normal is within `maxDihedralDegrees` of a reference normal.
+    ///
+    /// In the DEFAULT (`seedRelative: false`) mode, that reference is the CURRENT frontier
+    /// triangle's own normal (matching the reference implementation) — only adjacent-pair steps
+    /// are gated, never neighbour-vs-seed, so a region tolerates gradual curvature drift well
+    /// beyond the threshold across its extent. This pairwise gate is symmetric and doesn't depend
+    /// on which triangle absorbs which: region membership is exactly the connected component of
+    /// the fixed "smooth-edge" subgraph (adjacency pairs whose normals agree within the
+    /// threshold) containing the seed — a graph-connectivity invariant, so in this mode the
+    /// PARTITION itself (which triangles end up together) does not depend on `seedOrder` at all;
+    /// two different components can never be "contested" for the same triangle, since a triangle
+    /// reachable from both would just mean they were the same component all along.
+    ///
+    /// In `seedRelative: true` mode (`SegmentOptions.curvatureSeeding`'s opt-in — issue #29), the
+    /// reference is instead the REGION'S OWN SEED triangle's normal, fixed for that region's
+    /// entire growth. This is no longer a fixed, region-independent graph: whether a triangle can
+    /// be absorbed now depends on WHICH region is asking, so the same triangle can be reachable
+    /// from two different seeds' regions at once — a genuine contest, resolved by processing
+    /// order: each seed's flood runs to completion (its stack fully drains) before the next seed
+    /// in `seedOrder` is tried, so whichever region reaches a contested triangle first claims it,
+    /// and a later seed can never re-claim an already-assigned triangle. Ordering seeds by
+    /// ascending curvature (flat first) is what makes this useful rather than arbitrary: a flat
+    /// region's own seed-relative reach is identical to the pairwise mode (near-zero curvature
+    /// drift either way), so flat regions grow to their full planar extent unaffected and get
+    /// first claim at any shared boundary, while a high-curvature blend strip's total angular
+    /// span from ITS seed is capped at `maxDihedralDegrees` — tighter than pairwise's unbounded
+    /// gradual-drift tolerance — so it naturally surfaces as its own smaller region once its
+    /// later, higher-curvature seed is finally tried, instead of being absorbed arbitrarily by
+    /// whichever neighbour's flood reached it first under the seed-order-invariant pairwise rule.
+    ///
+    /// - Parameters:
+    ///   - seedOrder: the order seed triangles are tried in. `nil` (default) uses
+    ///     `0..<triangleCount` — the original, curvature-agnostic order. Must be some permutation
+    ///     of `0..<triangleCount`; every triangle still ends up in exactly one region either way.
+    ///   - seedRelative: selects the reference-normal mode described above. `false` (default)
+    ///     matches the original, `seedOrder`-invariant behavior exactly.
     static func segmentSmoothRegions(triangleCount tc: Int, normals: [SIMD3<Float>], adjacency: [[Int]],
-                                     maxDihedralDegrees: Float) -> [[Int]] {
+                                     maxDihedralDegrees: Float, seedOrder: [Int]? = nil,
+                                     seedRelative: Bool = false) -> [[Int]] {
         guard tc > 0 else { return [] }
         let cosThreshold = cos(maxDihedralDegrees * .pi / 180)
+        let order = seedOrder ?? Array(0..<tc)
 
         var region = [Int](repeating: -1, count: tc)
         var regions: [[Int]] = []
-        for seed in 0..<tc where region[seed] == -1 {
+        for seed in order where region[seed] == -1 {
             let id = regions.count
             var members: [Int] = []
             var stack = [seed]
             region[seed] = id
+            let seedNormal = normals[seed]
             while let t = stack.popLast() {
                 members.append(t)
-                let nt = normals[t]
+                let reference = seedRelative ? seedNormal : normals[t]
                 for n in adjacency[t] where region[n] == -1 {
-                    if simd_dot(nt, normals[n]) >= cosThreshold {
+                    if simd_dot(reference, normals[n]) >= cosThreshold {
                         region[n] = id
                         stack.append(n)
                     }

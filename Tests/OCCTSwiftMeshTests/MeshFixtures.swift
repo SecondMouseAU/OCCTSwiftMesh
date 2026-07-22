@@ -597,3 +597,52 @@ func transformedMesh(_ mesh: Mesh, by transform: simd_double4x4) -> Mesh {
     }
     return Mesh(vertices: newPositions, indices: mesh.indices)!
 }
+
+/// Reverses every triangle's winding (swaps its last two indices) — flips every face normal
+/// without moving a single vertex. Used to exercise `Mesh.windingNumber`/`orientationReport`'s
+/// documented linearity-in-orientation behavior against a known-good fixture.
+func reversedWinding(_ mesh: Mesh) -> Mesh {
+    var indices = mesh.indices
+    var tri = 0
+    while tri + 2 < indices.count {
+        indices.swapAt(tri + 1, tri + 2)
+        tri += 3
+    }
+    return Mesh(vertices: mesh.vertices, indices: indices)!
+}
+
+/// A flat square plate (`size × size` grid vertices, `spacing` apart, `z = 0`) with a raised
+/// rectangular "mesa" in its interior (`z = height` over `[innerLo, innerHi]` in both grid
+/// indices) — the one-cell-wide transition band between the two flat levels is a steep,
+/// tilted collar whose triangles fold sharply against BOTH the base and the top, forming two
+/// nested closed crease rings under `Mesh.creaseEdges`' default 30° threshold: the outer
+/// base/collar boundary and the inner collar/top boundary. Welded by construction (shared grid
+/// vertices) — `Mesh.creaseEdges`' precondition.
+func plateauMesh(size: Int = 9, spacing: Float = 1, innerLo: Int = 3, innerHi: Int = 5,
+                 height: Float = 5) -> Mesh {
+    func vertexIndex(_ i: Int, _ j: Int) -> UInt32 { UInt32(j * size + i) }
+    var positions: [SIMD3<Float>] = []
+    for j in 0..<size {
+        for i in 0..<size {
+            let raised = i >= innerLo && i <= innerHi && j >= innerLo && j <= innerHi
+            positions.append(SIMD3(Float(i) * spacing, Float(j) * spacing, raised ? height : 0))
+        }
+    }
+    var indices: [UInt32] = []
+    for j in 0..<(size - 1) {
+        for i in 0..<(size - 1) {
+            let a = vertexIndex(i, j), b = vertexIndex(i + 1, j)
+            let c = vertexIndex(i, j + 1), d = vertexIndex(i + 1, j + 1)
+            indices.append(contentsOf: [a, b, d, a, d, c])
+        }
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}
+
+/// The same raised mesa as `plateauMesh`, but the raised region's index range extends all the
+/// way to the plate's own edge on one side (`innerHi == size - 1`) — that side of the mesa has
+/// no base/collar beyond it at all, so both crease rings open up into PATHS that run off the
+/// mesh's own open boundary there instead of closing into loops. Welded by construction.
+func plateauTouchingEdgeMesh(size: Int = 9, spacing: Float = 1, innerLo: Int = 3, height: Float = 5) -> Mesh {
+    plateauMesh(size: size, spacing: spacing, innerLo: innerLo, innerHi: size - 1, height: height)
+}

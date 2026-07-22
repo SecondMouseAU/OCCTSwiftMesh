@@ -22,7 +22,7 @@ OCCTSwift itself stays focused on its mission as an OCCT wrapper. Mesh algorithm
 
 ## Status
 
-✅ **v1.6.0** — SemVer-stable. Ships `Mesh.simplified(_:)` (decimation, vendored [meshoptimizer](https://github.com/zeux/meshoptimizer) v1.1), `Mesh.crossSection(plane:)` (planar slicing into closed contours), the mesh connectivity toolkit (`welded`, `faceNormals`, `vertexNormals`, `triangleAdjacency`, `connectedComponents`, `subMesh`, `boundaryLoops`, `integrityReport`), `Mesh.segmented(_:)` (dihedral region-growing + primitive-fit merge), `Mesh.vertexCurvatures()` (Rusinkiewicz per-face curvature tensor), `Mesh.aligned(to:options:)` (point-to-plane ICP registration), and `Mesh.slippage(forTriangles:maxSamples:)` (Gelfand-Guibas slippage analysis). Requires OCCTSwift v1.12.9 or later. See [docs/CHANGELOG.md](docs/CHANGELOG.md).
+✅ **v1.7.0** — SemVer-stable. Ships `Mesh.simplified(_:)` (decimation, vendored [meshoptimizer](https://github.com/zeux/meshoptimizer) v1.1), `Mesh.crossSection(plane:)` (planar slicing into closed contours), the mesh connectivity toolkit (`welded`, `faceNormals`, `vertexNormals`, `triangleAdjacency`, `connectedComponents`, `subMesh`, `boundaryLoops`, `integrityReport`), `Mesh.segmented(_:)` (dihedral region-growing + primitive-fit merge, with opt-in curvature-ordered seeding) and `Mesh.segmentedRANSAC(_:)`/`segmentedAutoSelect(dihedral:ransac:)` (Schnabel-style RANSAC alternative + bake-off), `Mesh.vertexCurvatures()` (Rusinkiewicz per-face curvature tensor), `Mesh.aligned(to:options:)` (point-to-plane ICP registration), `Mesh.slippage(forTriangles:maxSamples:)` (Gelfand-Guibas slippage analysis), `Mesh.creaseEdges(minAngleDegrees:)` (dihedral-fold ring/path detection), and `Mesh.windingNumber(at:)`/`orientationReport(samples:)` (generalized winding number). Requires OCCTSwift v1.12.9 or later. See [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## API
 
@@ -105,6 +105,26 @@ for (region, fit) in zip(segmented.regions, segmented.fits) {
 // never silent.
 ```
 
+`SegmentOptions.curvatureSeeding` (opt-in, `false` default) orders seeds by ascending per-face
+curvature AND switches growing to seed-relative absorption, so flat regions claim their full
+extent before a fillet/blend strip is absorbed arbitrarily by whichever neighbour reaches it
+first. See [docs/algorithms/segmentation.md](docs/algorithms/segmentation.md).
+
+### RANSAC segmentation + auto-selection — `Mesh.segmentedRANSAC(_:)`, `Mesh.segmentedAutoSelect(dihedral:ransac:)`
+
+Schnabel-style iterative primitive extraction: claims a candidate's inliers across the WHOLE mesh,
+not just triangles contiguous with the sample — the right model for a scene where the same
+primitive kind shows up in several disconnected patches, complementing `segmented(_:)`'s
+single-integrated-part strength. Returns the same `SegmentedMesh` result type.
+
+```swift
+let result = mesh.segmentedRANSAC()      // Mesh.RANSACSegmentOptions() defaults
+let auto = mesh.segmentedAutoSelect()    // runs both strategies, keeps the higher-scoring one
+print(auto.strategy, auto.dihedralScore, auto.ransacScore)
+```
+
+See [docs/algorithms/ransac-segmentation.md](docs/algorithms/ransac-segmentation.md).
+
 ### Alignment — `Mesh.aligned(to:options:)`
 
 Point-to-plane ICP registration: recovers the rigid transform that best aligns this (source) mesh
@@ -118,6 +138,8 @@ if let result = scan.aligned(to: cad) {
     print(result.transform)       // simd_double4x4 — maps scan's original vertices into cad's frame
     print(result.residualRMS, result.iterations, result.converged)
 }
+```
+
 ### Curvature — `Mesh.vertexCurvatures()`
 
 Per-vertex principal curvatures and directions (Rusinkiewicz per-face tensor method, chosen over
@@ -148,6 +170,39 @@ let result = mesh.slippage(forTriangles: region.triangleIndices)
 print(result.kind, result.axisPoint as Any, result.axisDirection as Any)
 // .helix additionally sets result.pitch (translation per radian of rotation)
 ```
+
+### Crease-edge detection — `Mesh.creaseEdges(minAngleDegrees:)`
+
+Finds dihedral-fold edges (fold angle >= threshold, default 30°) and chains them into rings
+(closed loops, e.g. a door outline) and paths (open chains, e.g. a crease running off an open
+boundary) — outlining recessed/raised features on raw scan meshes. Like `triangleAdjacency()`,
+requires a welded mesh.
+
+```swift
+let result = mesh.creaseEdges()
+for ring in result.rings {
+    print(ring.closed, ring.vertexIndices.count, ring.length, ring.meanFoldAngleDegrees)
+}
+print(result.unchainedCreaseEdgeCount)   // never silent
+```
+
+See [docs/algorithms/crease-detection.md](docs/algorithms/crease-detection.md).
+
+### Winding number — `Mesh.windingNumber(at:)`, `Mesh.orientationReport(samples:)`
+
+Generalized winding number (Jacobson, Kavan, Sorkine-Hornung, SIGGRAPH 2013): a direct solid-angle
+sum that stays well-behaved on open shells, soup, and self-intersecting input, unlike parity/ray
+tests. No welding precondition — every triangle contributes independently.
+
+```swift
+print(mesh.windingNumber(at: SIMD3(0, 0, 0)))   // ~1 inside a closed mesh, ~0 outside
+let report = mesh.orientationReport()
+print(report.looksInverted, report.meanExteriorWinding)
+```
+
+See [docs/algorithms/winding-number.md](docs/algorithms/winding-number.md) — including an
+important caveat: this exterior-sampling diagnostic is provably powerless to detect inversion on
+a closed, watertight mesh (its real value is on open shells).
 
 ## Installation
 
