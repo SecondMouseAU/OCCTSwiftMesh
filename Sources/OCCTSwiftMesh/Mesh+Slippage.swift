@@ -10,6 +10,21 @@
 // pure rotation / coupled screw) identify the surface kind and, for the curved kinds, recover its
 // axis directly from the eigenvector's rotational/translational parts.
 //
+// BASIS INVARIANCE. When the slippable null space is more than 1-dimensional (plane: 3-D,
+// cylinder: 2-D, sphere: 3-D), the constraint being linear means ANY orthonormal basis of that
+// subspace is an equally valid set of eigenvectors — Jacobi's particular choice among them is an
+// artifact of tessellation noise and floating-point rounding, not a property of the surface. In
+// an axis-aligned test fixture the null space happens to line up with R^6's coordinate axes and
+// each eigenvector comes out "pure" (a lone translation or a lone rotation) by coincidence; under
+// a generic pose the basis mixes and per-eigenvector classification silently misreads a plane as
+// a sphere, a cylinder as freeform, and so on. The fix (below) classifies the SUBSPACE, not each
+// eigenvector: the rank of the Gram matrix Σ ωₖωₖᵀ over the slippable eigenvectors' rotational
+// parts is invariant to how that subspace's basis was chosen (an orthogonal change of basis
+// within the subspace leaves Σ ωₖωₖᵀ exactly unchanged), and axis recovery uses only formulas
+// that are similarly invariant to which combination of the true generators Jacobi happened to
+// return. Only a 1-dimensional null space (extrusion/revolution/helix) has a basis unique enough
+// (up to sign) for direct per-eigenvector classification.
+//
 // Like `triangleAdjacency()`/`connectedComponents()` (the "weld precondition family" — see
 // Mesh+Topology.swift's header), this operates on THIS mesh's own vertex/normal arrays with no
 // internal welding: callers pass a pre-welded mesh so `vertexNormals()` reflects real topology.
@@ -101,34 +116,38 @@ extension Mesh {
         guard lambdaMax > 1e-15 else { return degenerate }
         let ratios = values.map { $0 / lambdaMax }
 
-        // Eigenvalue-ratio threshold for "slippable" (a rigid motion the surface tolerates):
-        // real surfaces never hit exactly zero, so this is a relative-noise-floor cutoff, not a
-        // mathematical zero test.
-        let slipThreshold = 1e-3
-        // Within a slippable eigenvector (itself unit-norm over its 6 components), the threshold
-        // below which a rotational (ω) or axial-translation (v·axis) component counts as zero.
-        let componentThreshold = 1e-3
+        // How many of the 6 eigenvalue ratios are "slippable" (a rigid motion the surface
+        // tolerates). Real surfaces never hit exactly zero, and — critically — how far from zero
+        // varies with tessellation quality (a coarse/noisy sample can leave a genuinely slippable
+        // mode an order of magnitude above a fixed cutoff while still being separated from the
+        // non-slippable modes by a wide gap). So `d` is chosen by the SPECTRAL GAP: the split
+        // point (among candidates under `slipCeiling`, which bounds how far "near zero" is ever
+        // allowed to reach) with the largest jump to the next ratio, not a fixed threshold
+        // comparison. `slipCeiling` only rules out treating an obviously-not-small ratio as
+        // slippable regardless of gap size; `minGap` rejects a "best" gap too small to mean
+        // anything in absolute terms. `minRelativeJump` additionally requires the excluded ratio
+        // to be at least this many TIMES the included one — freeform data's smallest ratio can
+        // still land under `slipCeiling` by chance (it's just wherever a generic 6-eigenvalue
+        // spectrum happens to bottom out, not a real cluster), but the very next ratio then sits
+        // close beside it rather than jumping away, and the relative test catches that a plain
+        // absolute `minGap` (calibrated for genuine near-zero clusters, which sit orders of
+        // magnitude below their neighbours) is too easily cleared by two merely-smallish values.
+        let slipCeiling = 0.02
+        let minGap = 2e-4
+        let minRelativeJump = 3.0
+        let (d, gap) = Mesh.selectSlippableCount(ratios: ratios, ceiling: slipCeiling, minGap: minGap,
+                                                 minRelativeJump: minRelativeJump)
+        let confidence = max(0, min(1, gap / slipCeiling))
 
         struct Mode { let omega: SIMD3<Double>; let v: SIMD3<Double> }
-        enum SubKind { case translation(SIMD3<Double>), rotation(SIMD3<Double>, SIMD3<Double>),
-                       helix(SIMD3<Double>, SIMD3<Double>, Double) }
-
-        func classify(_ mode: Mode) -> SubKind {
-            let omegaLen = simd_length(mode.omega)
-            guard omegaLen >= componentThreshold else {
-                let dir = simd_length(mode.v) > 1e-12 ? simd_normalize(mode.v) : SIMD3<Double>(0, 0, 1)
-                return .translation(dir)
-            }
-            let axis = mode.omega / omegaLen
-            let vParallelLen = simd_dot(mode.v, axis)
-            let vPerp = mode.v - vParallelLen * axis
-            if abs(vParallelLen) < componentThreshold {
-                let q = simd_cross(mode.omega, mode.v) / (omegaLen * omegaLen)
-                return .rotation(axis, q)
-            }
-            let q = simd_cross(mode.omega, vPerp) / (omegaLen * omegaLen)
-            return .helix(axis, q, vParallelLen / omegaLen)
+        let modes: [Mode] = (0..<d).map {
+            let e = vectors[$0]
+            return Mode(omega: SIMD3(e[0], e[1], e[2]), v: SIMD3(e[3], e[4], e[5]))
         }
+
+        var centroid = SIMD3<Double>.zero
+        for p in points { centroid += p }
+        centroid /= Double(points.count)
 
         // Real-space conversion: axis points and pitch were derived in the NORMALIZED frame
         // (p' = (p - center) · scale); points transform back via the inverse affine map, and
@@ -137,76 +156,135 @@ extension Mesh {
         func toRealPoint(_ q: SIMD3<Double>) -> SIMD3<Double> { q / scale + center }
         func toRealPitch(_ p: Double) -> Double { p / scale }
 
-        let modes: [Mode] = (0..<6).filter { ratios[$0] < slipThreshold }.map {
-            let e = vectors[$0]
-            return Mode(omega: SIMD3(e[0], e[1], e[2]), v: SIMD3(e[3], e[4], e[5]))
-        }
-        let subKinds = modes.map(classify)
-
-        var translations: [SIMD3<Double>] = []
-        var rotations: [(axis: SIMD3<Double>, point: SIMD3<Double>)] = []
-        var helices: [(axis: SIMD3<Double>, point: SIMD3<Double>, pitch: Double)] = []
-        for sk in subKinds {
-            switch sk {
-            case .translation(let d): translations.append(d)
-            case .rotation(let a, let q): rotations.append((a, q))
-            case .helix(let a, let q, let p): helices.append((a, q, p))
-            }
-        }
-
-        var centroid = SIMD3<Double>.zero
-        for p in points { centroid += p }
-        centroid /= Double(points.count)
-
-        let confidence = Mesh.slippageConfidence(ratios: ratios, slippableCount: modes.count,
-                                                  threshold: slipThreshold)
-
         func result(_ kind: SlippageResult.Kind, axisPoint: SIMD3<Double>?, axisDirection: SIMD3<Double>?,
                    pitch: Double?) -> SlippageResult {
             SlippageResult(kind: kind, axisPoint: axisPoint, axisDirection: axisDirection, pitch: pitch,
                           eigenRatios: ratios, confidence: confidence)
         }
 
-        switch (translations.count, rotations.count, helices.count) {
-        case (2, 1, 0):   // plane: 2 in-plane translations + 1 rotation about the normal
-            return result(.plane, axisPoint: centroid, axisDirection: rotations[0].axis, pitch: nil)
+        guard d > 0 else { return result(.freeform, axisPoint: nil, axisDirection: nil, pitch: nil) }
 
-        case (0, 3, 0):   // sphere: 3 independent rotations, all about the same center
-            var q = SIMD3<Double>.zero
-            for r in rotations { q += r.point }
-            q /= 3
+        if d == 1 {
+            // A 1-D null space has a basis unique up to sign — no basis-mixing ambiguity, so the
+            // single eigenvector's own rotational/translational split is classified directly.
+            let mode = modes[0]
+            let omegaLen = simd_length(mode.omega)
+            let componentThreshold = 1e-3   // fraction of the (unit-norm) eigenvector's own scale
+            guard omegaLen >= componentThreshold else {
+                let dir = simd_length(mode.v) > 1e-12 ? simd_normalize(mode.v) : SIMD3<Double>(0, 0, 1)
+                return result(.extrusion, axisPoint: centroid, axisDirection: dir, pitch: nil)
+            }
+            let axis = mode.omega / omegaLen
+            let vParallelLen = simd_dot(mode.v, axis)
+            let vPerp = mode.v - vParallelLen * axis
+            let q = simd_cross(mode.omega, vPerp) / (omegaLen * omegaLen)
+            if abs(vParallelLen) < componentThreshold {
+                return result(.revolution, axisPoint: toRealPoint(q), axisDirection: axis, pitch: nil)
+            }
+            return result(.helix, axisPoint: toRealPoint(q), axisDirection: axis,
+                         pitch: toRealPitch(vParallelLen / omegaLen))
+        }
+
+        // d >= 2: classify the SUBSPACE via the rank of the Gram matrix of its eigenvectors'
+        // rotational (ω) parts — invariant to which particular basis Jacobi returned for it (see
+        // the file header). `r` is the number of independent rotation axes the slippable subspace
+        // contains: 0 (pure translations only), 1 (all rotation content shares one axis — plane's
+        // normal-axis rotation, or cylinder's axis), or 3 (sphere: rotation about any axis).
+        var g = [[Double]](repeating: [0, 0, 0], count: 3)
+        for mode in modes {
+            let w = mode.omega
+            g[0][0] += w.x * w.x; g[0][1] += w.x * w.y; g[0][2] += w.x * w.z
+            g[1][1] += w.y * w.y; g[1][2] += w.y * w.z; g[2][2] += w.z * w.z
+        }
+        g[1][0] = g[0][1]; g[2][0] = g[0][2]; g[2][1] = g[1][2]
+        let (gValues, gVectors) = Linalg.eigenSymmetric3(g)   // ascending
+        let gMax = gValues.last ?? 0
+        let rankFloor = 1e-2   // relative to gMax; the Gram matrix's own spread, not eigenRatios'
+        let r = gMax > 1e-18 ? gValues.filter { $0 / gMax > rankFloor }.count : 0
+        let axisDirection = gMax > 1e-18 ? SIMD3<Double>(gVectors[2][0], gVectors[2][1], gVectors[2][2]) : nil
+
+        switch (d, r) {
+        case (3, 1):   // plane: rotation content is 1-D (about the normal); the rest is translation
+            return result(.plane, axisPoint: centroid, axisDirection: axisDirection, pitch: nil)
+
+        case (3, 3):   // sphere: rotation content spans all of R³ — any axis through one center
+            guard let q = Mesh.slippageSphereCenter(modes.map { ($0.omega, $0.v) }) else {
+                return result(.sphere, axisPoint: nil, axisDirection: nil, pitch: nil)
+            }
             return result(.sphere, axisPoint: toRealPoint(q), axisDirection: nil, pitch: nil)
 
-        case (1, 1, 0) where abs(simd_dot(simd_normalize(translations[0]), rotations[0].axis)) > 0.9:
-            // cylinder: rotation about an axis + translation along that same axis
-            return result(.cylinder, axisPoint: toRealPoint(rotations[0].point), axisDirection: rotations[0].axis,
-                         pitch: nil)
-
-        case (1, 0, 0):   // extrusion: pure translation, no rotational symmetry
-            return result(.extrusion, axisPoint: centroid, axisDirection: translations[0], pitch: nil)
-
-        case (0, 1, 0):   // surface of revolution: pure rotation, axis through a fixed point
-            return result(.revolution, axisPoint: toRealPoint(rotations[0].point), axisDirection: rotations[0].axis,
-                         pitch: nil)
-
-        case (0, 0, 1):   // helix: coupled rotation + translation along the same axis (a screw)
-            let h = helices[0]
-            return result(.helix, axisPoint: toRealPoint(h.point), axisDirection: h.axis, pitch: toRealPitch(h.pitch))
+        case (2, 1):   // cylinder: rotation about an axis + translation along that same axis
+            guard let axis = axisDirection,
+                  let q = Mesh.slippageAxisPoint(modes.map { ($0.omega, $0.v) }, axis: axis) else {
+                return result(.freeform, axisPoint: nil, axisDirection: nil, pitch: nil)
+            }
+            return result(.cylinder, axisPoint: toRealPoint(q), axisDirection: axis, pitch: nil)
 
         default:
             return result(.freeform, axisPoint: nil, axisDirection: nil, pitch: nil)
         }
     }
 
-    /// How cleanly the slippable eigenvalues separate from the non-slippable ones: the ratio
-    /// gap straddling the slippable/non-slippable boundary, scaled by `threshold` and clamped to
-    /// `[0, 1]`. A wide gap (slippable modes near-exactly zero, the rest clearly not) means a
-    /// confident classification; a gap barely past the threshold means the boundary itself is
-    /// close to arbitrary.
-    static func slippageConfidence(ratios: [Double], slippableCount k: Int, threshold: Double) -> Double {
-        guard threshold > 0 else { return 0 }
-        let below = k > 0 ? ratios[k - 1] : 0
-        let above = k < ratios.count ? ratios[k] : 1
-        return max(0, min(1, (above - below) / threshold))
+    /// Picks the slippable-mode count `d` by the largest spectral gap among candidates whose
+    /// upper (included) ratio stays under `ceiling` AND whose jump to the next ratio clears both
+    /// `minGap` (absolute) and `minRelativeJump` (relative to the included ratio) — rather than a
+    /// fixed threshold comparison. See the call site's comment. Returns `(0, 0)` if no candidate
+    /// qualifies.
+    static func selectSlippableCount(ratios: [Double], ceiling: Double, minGap: Double,
+                                     minRelativeJump: Double) -> (d: Int, gap: Double) {
+        var bestD = 0
+        var bestGap = 0.0
+        for d in 1..<ratios.count where ratios[d - 1] < ceiling {
+            let gap = ratios[d] - ratios[d - 1]
+            guard gap >= minGap, ratios[d] >= minRelativeJump * ratios[d - 1] else { continue }
+            if gap > bestGap { bestGap = gap; bestD = d }
+        }
+        return bestGap > 0 ? (bestD, bestGap) : (0, 0)
+    }
+
+    /// The axis point for a rank-1 rotational subspace (cylinder — also correct for a 1-D
+    /// null space's single rotation/helix mode, though that path is handled directly since it
+    /// needs no subspace machinery). Any mode in the subspace with nonzero ω gives the SAME
+    /// point: for two generators sharing an axis (pure rotation about it, pure translation along
+    /// it), a combination `c = α·rotation + β·translation` has `ω_c = α·a` and
+    /// `v_c,⊥ = α·v_rotation,⊥` — the `β` (translation) and `α` (overall scale) drop out of
+    /// `q = ω_c × v_c,⊥ / |ω_c|²` entirely. Picks the largest-|ω| mode for conditioning.
+    static func slippageAxisPoint(_ modes: [(omega: SIMD3<Double>, v: SIMD3<Double>)],
+                                  axis: SIMD3<Double>) -> SIMD3<Double>? {
+        guard let best = modes.max(by: { simd_length_squared($0.omega) < simd_length_squared($1.omega) }) else {
+            return nil
+        }
+        let omegaLen2 = simd_length_squared(best.omega)
+        guard omegaLen2 > 1e-18 else { return nil }
+        let vPerp = best.v - simd_dot(best.v, axis) * axis
+        return simd_cross(best.omega, vPerp) / omegaLen2
+    }
+
+    /// The common center of a rank-3 rotational subspace (sphere): every mode satisfies
+    /// `v = -ω × q` for the SAME `q` (true regardless of which combination of the 3 true
+    /// generators Jacobi returned, since the relation is linear in `(ω, v)`), so `q` is the
+    /// least-squares solution of `ω × q = -v` stacked over every mode —
+    /// `[Σ(|ω|²I - ωωᵀ)] q = Σ(ω × v)` — rather than averaging each mode's own axis-foot
+    /// independently (which, for a non-orthogonal/non-canonical basis, is NOT the sphere's
+    /// center: it systematically pulls the estimate toward the origin).
+    static func slippageSphereCenter(_ modes: [(omega: SIMD3<Double>, v: SIMD3<Double>)]) -> SIMD3<Double>? {
+        var ata = [[Double]](repeating: [0, 0, 0], count: 3)
+        var atb = [Double](repeating: 0, count: 3)
+        for mode in modes {
+            let omegaLen = simd_length(mode.omega)
+            guard omegaLen > 1e-9 else { continue }
+            let axis = mode.omega / omegaLen
+            let vPerp = mode.v - simd_dot(mode.v, axis) * axis
+            let w = mode.omega
+            ata[0][0] += omegaLen * omegaLen - w.x * w.x
+            ata[1][1] += omegaLen * omegaLen - w.y * w.y
+            ata[2][2] += omegaLen * omegaLen - w.z * w.z
+            ata[0][1] -= w.x * w.y; ata[0][2] -= w.x * w.z; ata[1][2] -= w.y * w.z
+            let cross = simd_cross(mode.omega, vPerp)
+            atb[0] += cross.x; atb[1] += cross.y; atb[2] += cross.z
+        }
+        ata[1][0] = ata[0][1]; ata[2][0] = ata[0][2]; ata[2][1] = ata[1][2]
+        guard let sol = Linalg.solve(ata, atb), sol.allSatisfy({ $0.isFinite }) else { return nil }
+        return SIMD3<Double>(sol[0], sol[1], sol[2])
     }
 }
