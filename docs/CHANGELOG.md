@@ -2,6 +2,32 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## v1.6.0 — slippage analysis (Gelfand-Guibas)
+
+Adds `Mesh.slippage(forTriangles:maxSamples:)` ([#26](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/26)) — classifies a segmented region's surface kind (plane / sphere / cylinder / extrusion / revolution / helix / freeform) and recovers its characteristic axis, by local slippage analysis (Gelfand & Guibas, SGP 2004). Pure Swift + simd — no vendored library. See [docs/algorithms/slippage.md](algorithms/slippage.md).
+
+```swift
+let result = mesh.slippage(forTriangles: region.triangleIndices)
+print(result.kind, result.axisPoint as Any, result.axisDirection as Any, result.pitch as Any)
+```
+
+- Builds the 6×6 "slippage covariance" of per-sample constraint rows `[p×n, n]`; near-zero
+  eigenvalue RATIOS (relative to the largest, never absolute — patch-extent-independent) mark
+  rigid motions the surface tolerates. Their count and character (pure translation / pure rotation
+  / coupled screw) determine the kind and, for the curved kinds, the axis directly.
+- `Linalg.eigenSymmetric(_:)` — a new N×N generalization of the existing `eigenSymmetric3`'s
+  classical Jacobi eigensolver, reused here for the 6×6 case ("Jacobi generalizes directly").
+- Per-vertex sample weighting (barycentric area lumping, as in a mass matrix) so densely
+  tessellated sub-patches (e.g. a UV sphere's pole rings) don't bias the covariance away from the
+  continuous surface integral it approximates.
+- Points are normalized to a unit box before eigen-analysis; axis points and pitch are converted
+  back to the mesh's real coordinate frame afterward.
+- Like `triangleAdjacency()`/`connectedComponents()`, operates on THIS mesh's own vertex/normal
+  arrays with no internal welding — callers pass an already-welded mesh.
+- Deterministic: the same even-stride `maxSamples` subsample as ICP, and `eigenSymmetric`'s
+  classical (largest-off-diagonal-element) Jacobi sweep, are both free of unordered-collection
+  iteration or randomness.
+
 ## v1.5.0 — point-to-plane ICP alignment
 
 Adds `Mesh.aligned(to:options:)` ([#22](https://github.com/SecondMouseAU/OCCTSwiftMesh/issues/22)) — point-to-plane ICP registration (PCA pre-align, normal-space sampling, trimmed correspondence), pure Swift + simd, no vendored library. See [docs/algorithms/alignment.md](algorithms/alignment.md).

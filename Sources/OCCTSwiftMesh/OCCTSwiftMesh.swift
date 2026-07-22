@@ -12,6 +12,9 @@
 //   normal-space sampling + trimmed correspondence).
 // Mesh.vertexCurvatures() — per-vertex principal curvatures/directions (Rusinkiewicz
 //   per-face tensor method).
+// Mesh.slippage(forTriangles:maxSamples:) — Gelfand-Guibas slippage analysis: classifies a
+//   region's surface kind (plane/sphere/cylinder/extrusion/revolution/helix/freeform) and
+//   recovers its characteristic axis.
 // See docs/CHANGELOG.md and docs/algorithms/.
 
 /// Namespace marker for the OCCTSwiftMesh module. The public surface lives
@@ -20,5 +23,5 @@
 /// to attach the module's documentation to.
 public enum OCCTSwiftMesh {
     /// Package version. Bump on each tagged release.
-    public static let version = "1.5.0"
+    public static let version = "1.6.0"
 }

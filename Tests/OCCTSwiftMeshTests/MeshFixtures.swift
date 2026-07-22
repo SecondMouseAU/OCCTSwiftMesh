@@ -424,6 +424,111 @@ func flatWithBumpMesh(size: Float = 40, segments: Int = 40, bumpCenter: SIMD2<Fl
     return Mesh(vertices: positions, indices: indices)!
 }
 
+/// A UV sphere (lat/long grid, poles collapsed to single vertices) — welded by construction.
+func sphereMesh(radius: Float = 5, latSegments: Int = 12, lonSegments: Int = 16) -> Mesh {
+    var positions: [SIMD3<Float>] = []
+    let northPole = UInt32(0); positions.append(SIMD3(0, 0, radius))
+    for i in 1..<latSegments {
+        let theta = Float(i) / Float(latSegments) * .pi   // 0 (north) ... pi (south)
+        let z = radius * cos(theta), r = radius * sin(theta)
+        for j in 0..<lonSegments {
+            let phi = Float(j) / Float(lonSegments) * 2 * .pi
+            positions.append(SIMD3(r * cos(phi), r * sin(phi), z))
+        }
+    }
+    let southPole = UInt32(positions.count); positions.append(SIMD3(0, 0, -radius))
+
+    func ring(_ i: Int, _ j: Int) -> UInt32 { UInt32(1 + (i - 1) * lonSegments + (j % lonSegments)) }
+
+    var indices: [UInt32] = []
+    for j in 0..<lonSegments {
+        indices.append(contentsOf: [northPole, ring(1, j), ring(1, j + 1)])
+    }
+    for i in 1..<(latSegments - 1) {
+        for j in 0..<lonSegments {
+            let a = ring(i, j), b = ring(i, j + 1), c = ring(i + 1, j), d = ring(i + 1, j + 1)
+            indices.append(contentsOf: [a, b, d, a, d, c])
+        }
+    }
+    for j in 0..<lonSegments {
+        indices.append(contentsOf: [southPole, ring(latSegments - 1, j + 1), ring(latSegments - 1, j)])
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}
+
+/// The lateral (side) surface only of a cone, as a multi-ring stack tapering to the apex (NOT a
+/// single fan from one apex vertex — a fan only samples 2 distinct heights (apex + base rim),
+/// too degenerate a point set to expose the surface's true 1-parameter rotational symmetry
+/// without spurious extra ones). A genuine surface of revolution, distinct from a cylinder
+/// because its radius varies along the axis. Welded by construction (shared ring vertices).
+func coneLateralMesh(baseRadius: Float = 4, height: Float = 10, segments: Int = 16, rings: Int = 8) -> Mesh {
+    var positions: [SIMD3<Float>] = []
+    for k in 0..<rings {
+        let t = Float(k) / Float(rings - 1)   // 0 at base, 1 near the apex
+        let z = t * height
+        let r = baseRadius * (1 - t)
+        for i in 0..<segments {
+            let a = Float(i) / Float(segments) * 2 * .pi
+            positions.append(SIMD3(r * cos(a), r * sin(a), z))
+        }
+    }
+    var indices: [UInt32] = []
+    for k in 0..<(rings - 1) {
+        let lo = UInt32(k * segments), hi = UInt32((k + 1) * segments)
+        for i in 0..<segments {
+            let a = lo + UInt32(i), b = lo + UInt32((i + 1) % segments)
+            let c = hi + UInt32(i), d = hi + UInt32((i + 1) % segments)
+            indices.append(contentsOf: [a, b, c, b, d, c])
+        }
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}
+
+/// The lateral surface of a triangular prism — flat quad faces only (no end caps), extruded
+/// along +Z. A non-circular cross-section rules out any rotational symmetry, leaving pure
+/// translation as the only slippable motion. Welded by construction.
+func triangularPrismLateralMesh(height: Float = 20) -> Mesh {
+    let base: [SIMD2<Float>] = [SIMD2(0, 0), SIMD2(4, 0), SIMD2(1, 3)]
+    var positions: [SIMD3<Float>] = []
+    for z in [Float(0), height] {
+        for p in base { positions.append(SIMD3(p.x, p.y, z)) }
+    }
+    var indices: [UInt32] = []
+    for i in 0..<3 {
+        let a = UInt32(i), b = UInt32((i + 1) % 3)
+        let c = a + 3, d = b + 3
+        indices.append(contentsOf: [a, b, d, a, d, c])
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}
+
+/// A helicoid strip: `(v·cos(u), v·sin(u), pitch·u / 2π)` for `v ∈ [innerRadius, outerRadius]`,
+/// `u` over several full turns — the textbook screw-symmetric ruled surface (rotating by du about
+/// Z while translating by `pitch·du/2π` along Z maps the surface exactly onto itself). Welded by
+/// construction (shared grid vertices).
+func helicoidStripMesh(innerRadius: Float = 2, outerRadius: Float = 5, pitch: Float = 6,
+                       turns: Float = 3, uSegments: Int = 96, vSegments: Int = 6) -> Mesh {
+    var positions: [SIMD3<Float>] = []
+    for i in 0...uSegments {
+        let u = Float(i) / Float(uSegments) * turns * 2 * .pi
+        let z = pitch * u / (2 * .pi)
+        for j in 0...vSegments {
+            let v = innerRadius + Float(j) / Float(vSegments) * (outerRadius - innerRadius)
+            positions.append(SIMD3(v * cos(u), v * sin(u), z))
+        }
+    }
+    let cols = vSegments + 1
+    var indices: [UInt32] = []
+    for i in 0..<uSegments {
+        for j in 0..<vSegments {
+            let a = UInt32(i * cols + j), b = UInt32(i * cols + j + 1)
+            let c = UInt32((i + 1) * cols + j), d = UInt32((i + 1) * cols + j + 1)
+            indices.append(contentsOf: [a, b, d, a, d, c])
+        }
+    }
+    return Mesh(vertices: positions, indices: indices)!
+}
+
 /// Applies a rigid transform to every vertex of `mesh`, keeping its indices unchanged.
 func transformedMesh(_ mesh: Mesh, by transform: simd_double4x4) -> Mesh {
     let newPositions = mesh.vertices.map { v -> SIMD3<Float> in
