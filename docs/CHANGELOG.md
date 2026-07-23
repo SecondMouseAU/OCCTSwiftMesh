@@ -2,6 +2,15 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## v1.7.1 — repin OCCTSwift 1.15.10 (accumulated crash/reentrancy fixes)
+
+Repin the OCCTSwift floor from **1.12.9** to **1.15.10**, picking up the kernel and bridge
+fixes shipped across that range — most notably the OBJ/glTF/PLY CAF import race
+([OCCTSwift#341](https://github.com/SecondMouseAU/OCCTSwift/issues/341)) and the
+`PCDM_StorageDriver`/`PCDM_Reader` reentrancy SIGSEGV
+([OCCTSwift#349](https://github.com/SecondMouseAU/OCCTSwift/issues/349)). No API or
+behaviour change on this package's side — `Mesh` is untouched across the range.
+
 ## v1.7.0 — Phase 3 mesh-analysis expansion: creases, winding number, curvature seeding, RANSAC
 
 Four features from the OCCTMCP mesh-analysis expansion (Phase 3), consumed by
