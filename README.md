@@ -2,6 +2,10 @@
 
 [![Swift](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2FSecondMouseAU%2FOCCTSwiftMesh%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/SecondMouseAU/OCCTSwiftMesh)
 [![Platforms](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2FSecondMouseAU%2FOCCTSwiftMesh%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/SecondMouseAU/OCCTSwiftMesh)
+[![License](https://img.shields.io/badge/license-LGPL--2.1-blue)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-cookbook-2ea44f)](https://secondmouseau.github.io/OCCTSwiftMesh/)
+
+📖 **Documentation & cookbook:** <https://secondmouseau.github.io/OCCTSwiftMesh/>
 
 Mesh-domain algorithms for the [OCCTSwift](https://github.com/SecondMouseAU/OCCTSwift) ecosystem. Operates on `OCCTSwift.Mesh` instances; complements the OCCT-side topology kernel rather than extending it.
 
@@ -220,6 +224,25 @@ targets: [
     )
 ]
 ```
+
+## Documentation
+
+Full docs & cookbook: **<https://secondmouseau.github.io/OCCTSwiftMesh/>**
+
+| Document | Description |
+|----------|-------------|
+| [API Reference](docs/reference/) | Per-type function reference — signatures, parameters, examples |
+| [Decimation algorithm notes](docs/algorithms/decimation.md) | QEM backend, vendored meshoptimizer, Hausdorff units |
+| [Mesh foundations](docs/algorithms/mesh-foundations.md) | Welding, connectivity, integrity reporting |
+| [Segmentation](docs/algorithms/segmentation.md) · [RANSAC segmentation](docs/algorithms/ransac-segmentation.md) | Dihedral region-growing + primitive-fit merge; Schnabel-style RANSAC alternative |
+| [Curvature](docs/algorithms/curvature.md) | Rusinkiewicz per-face curvature tensor method |
+| [Alignment](docs/algorithms/alignment.md) | Point-to-plane ICP registration |
+| [Slippage analysis](docs/algorithms/slippage.md) | Gelfand-Guibas surface-kind classification |
+| [Crease detection](docs/algorithms/crease-detection.md) | Dihedral-fold ring/path detection |
+| [Winding number](docs/algorithms/winding-number.md) | Generalized winding number, orientation diagnostics |
+| [Cookbook](docs/guides/cookbook/) | Task-oriented, example-rich guides |
+| [Changelog](docs/CHANGELOG.md) | Release-by-release history |
+| [Vendoring](docs/VENDORING.md) | Re-vendoring procedure for the bundled meshoptimizer |
 
 ## License
 
