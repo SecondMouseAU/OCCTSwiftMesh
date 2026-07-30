@@ -37,7 +37,7 @@ let package = Package(
         // Mesh(vertices:normals:indices:) initializer (OCCTSwift#94) that
         // Mesh.simplified(_:) needs to wrap its raw output. v1.0.x preserves it.
         // Floored at 1.7.1 for OCCT 8.0.0p1 (redesigned BRepGraph/TopologyGraph).
-        occtDep("OCCTSwift", from: "1.15.10"),   // ≥1.15.10: accumulated kernel/bridge crash + reentrancy fixes through #349 (patches 0003-0018); no API changes vs 1.12.9
+        occtDep("OCCTSwift", from: "1.17.0"),   // ≥1.17.0: Pass 1a duplication/bug-fix audit (OCCTSwift#377/#380) — continuity enum consolidation (source-compatible via deprecated aliases), Surface.drawMesh/evaluateGrid now return SurfaceGrid (not used here); ≥1.15.10: accumulated kernel/bridge crash + reentrancy fixes through #349 (patches 0003-0018); no API changes vs 1.12.9
     ],
     targets: [
         // Public Swift API: Mesh.simplified(_:) and friends.
