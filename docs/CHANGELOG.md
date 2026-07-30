@@ -2,6 +2,22 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## v1.7.2 — repin OCCTSwift 1.17.0 (Pass 1a duplication/bug-fix audit)
+
+Repin the OCCTSwift floor from **1.15.10** to **1.17.0**, picking up Pass 1a of OCCTSwift's
+[#377/#380](https://github.com/SecondMouseAU/OCCTSwift/issues/377) duplication/bug-fix audit:
+nine duplicated continuity enums consolidated into two (source-compatible via deprecated-alias
+shims), several dedup cleanups, and edge-case bug fixes (arc-length failure sentinels,
+`Surface.normal` at singularities, `Curve2D.circle` at radius zero). One real API break —
+`Surface.drawMesh`/`evaluateGrid` now return a `SurfaceGrid` struct instead of
+`[[SIMD3<Double>]]` — is unused in this repo (grep-verified: this package's mesh code doesn't
+touch OCCTSwift's `Surface` type at all). No API or behaviour change on this package's side.
+
+> Note: the entry below (**v1.7.1**) documents an earlier repin to 1.15.10 that was written up
+> but never actually tagged as a release — `Package.swift` already carried that floor before
+> this bump. Left as historical record; a maintainer may want to backfill that tag separately,
+> not done here since v1.7.2 has already superseded it.
+
 ## v1.7.1 — repin OCCTSwift 1.15.10 (accumulated crash/reentrancy fixes)
 
 Repin the OCCTSwift floor from **1.12.9** to **1.15.10**, picking up the kernel and bridge
