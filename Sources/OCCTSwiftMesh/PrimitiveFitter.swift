@@ -151,7 +151,16 @@ enum PrimitiveFitter {
         let r = r2.squareRoot()
         let center3d = origin + a * u + b * v
 
-        let residuals = proj.map { abs((($0.0 - a) * ($0.0 - a) + ($0.1 - b) * ($0.1 - b)).squareRoot() - r) }
+        // Broken into sub-expressions: the single-line form timed out the
+        // type-checker on at least one CI toolchain ("unable to type-check
+        // this expression in reasonable time"), though it resolved fine
+        // locally on other toolchains. Same computation, no behaviour change.
+        let residuals = proj.map { (pu, pv) -> Double in
+            let du = pu - a
+            let dv = pv - b
+            let dist = (du * du + dv * dv).squareRoot()
+            return abs(dist - r)
+        }
         let (rms, mx, inl) = stats(residuals)
         return FittedPrimitive(kind: .cylinder,
                                params: [center3d.x, center3d.y, center3d.z, axis.x, axis.y, axis.z, r],
