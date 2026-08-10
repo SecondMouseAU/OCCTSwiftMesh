@@ -2,6 +2,21 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## v1.7.3 — repin OCCTSwift 2.0.0
+
+Repin the OCCTSwift floor from **1.17.0** to **2.0.0**. OCCTSwift's v2.0.0
+([`docs/SEMVER.md#v200`](https://github.com/SecondMouseAU/OCCTSwift/blob/main/docs/SEMVER.md#v200))
+is a correctness major (Pass 1a/1b duplication+bug-fix audit,
+[#377](https://github.com/SecondMouseAU/OCCTSwift/issues/377)/[#669](https://github.com/SecondMouseAU/OCCTSwift/issues/669);
+OCCT absorbed to 8.0.1), 17 breaking API changes (12 compile errors, 5 silent value changes).
+Audited this package's call sites against the full break table, including the sub-shape-enumeration
+(#541/#568/#613/#502) and AAG (#642/#699) families a first-pass grep at issue-filing time hadn't
+covered, given this package's own per-triangle/per-face indexing (segmentation, RANSAC fitting,
+crease detection, slippage classification): zero hits anywhere. This package's own
+`triangleAdjacency(indices:triangleCount:)` (`Mesh+Topology.swift`/`Mesh+Segmentation.swift`) builds
+from raw index arrays, a mechanism independent of OCCTSwift's face-occurrence-indexed entry points.
+No API or behaviour change here.
+
 ## v1.7.2 — repin OCCTSwift 1.17.0 (Pass 1a duplication/bug-fix audit)
 
 Repin the OCCTSwift floor from **1.15.10** to **1.17.0**, picking up Pass 1a of OCCTSwift's
