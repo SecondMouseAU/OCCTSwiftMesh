@@ -2,6 +2,16 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## v1.7.4 — fix a type-checker timeout in `fitCylinder`
+
+`PrimitiveFitter.fitCylinder`'s residuals expression (`abs(((...) + (...)).squareRoot() - r)`
+inside a `.map`) type-checked fine on some Swift toolchains but hit "unable to type-check this
+expression in reasonable time" on at least one CI runner, once a downstream consumer's build
+pipeline first reached compiling this file end-to-end (this repo carries no build/test CI of its
+own — only GitHub Pages deploy — so nothing here had exercised it before). Broken into named
+sub-expressions; same computation, no behaviour or API change. Pre-existing, unrelated to the
+OCCTSwift 2.0.0 repin in v1.7.3 below.
+
 ## v1.7.3 — repin OCCTSwift 2.0.0
 
 Repin the OCCTSwift floor from **1.17.0** to **2.0.0**. OCCTSwift's v2.0.0
