@@ -1,9 +1,10 @@
+import OCCTSwift
 import Testing
 import simd
-import OCCTSwift
+
 @testable import OCCTSwiftMesh
 
-@Suite("Mesh.welded — vertex welding")
+@Suite("Mesh.welded, vertex welding")
 struct WeldingTests {
     @Test("Per-triangle-unique-vertex box welds down to the shared-vertex form")
     func unweldedCubeWelds() {
@@ -29,7 +30,7 @@ struct WeldingTests {
 
     @Test("Tolerance controls whether near-coincident vertices merge")
     func weldToleranceBoundary() {
-        // P0/P1 are 0.0003 apart — well inside a single grid cell at tolerance 0.001 (ratio
+        // P0/P1 are 0.0003 apart; well inside a single grid cell at tolerance 0.001 (ratio
         // 0.3, rounds to the same cell as P0) and well outside one at tolerance 0.0001 (ratio
         // 3.0, three cells away): comfortably clear of the grid-hash's cell-boundary rounding
         // ambiguity in either direction.
@@ -53,14 +54,16 @@ struct WeldingTests {
         // coordinates of this magnitude, the naive (unclamped) grid coordinate overflows
         // Int64 on conversion. Reaching the assertion at all is the regression check.
         let huge: Float = 1e13
-        let p: [SIMD3<Float>] = [SIMD3(huge, huge, huge), SIMD3(huge, huge, huge), SIMD3(huge, huge, huge)]
+        let p: [SIMD3<Float>] = [
+            SIMD3(huge, huge, huge), SIMD3(huge, huge, huge), SIMD3(huge, huge, huge),
+        ]
         let mesh = Mesh(vertices: p, indices: [0, 1, 2])!
         let welded = mesh.welded()
         #expect(welded.vertexCount >= 1)
     }
 }
 
-@Suite("Mesh — connectivity toolkit")
+@Suite("Mesh, connectivity toolkit")
 struct TopologyTests {
     @Test("faceNormals are unit length")
     func faceNormalsUnitLength() {
@@ -86,7 +89,7 @@ struct TopologyTests {
         for neighbors in adjacency { #expect(neighbors.count == 3) }
     }
 
-    @Test("Unwelded input has no adjacency — documents the weld precondition")
+    @Test("Unwelded input has no adjacency, documents the weld precondition")
     func adjacencyRequiresWeld() {
         let cube = unweldedUnitCube()
         let adjacency = cube.triangleAdjacency()
@@ -116,7 +119,7 @@ struct TopologyTests {
         #expect(a[1].triangleIndices.min() == 12)
     }
 
-    @Test("Unwelded input is every triangle its own component — documents the weld precondition")
+    @Test("Unwelded input is every triangle its own component, documents the weld precondition")
     func componentsRequireWeld() {
         let cube = unweldedUnitCube()
         #expect(cube.connectedComponents().count == 12)
@@ -162,7 +165,7 @@ struct TopologyTests {
     }
 }
 
-@Suite("Mesh.integrityReport — validity & quality snapshot")
+@Suite("Mesh.integrityReport, validity & quality snapshot")
 struct IntegrityReportTests {
     @Test("A closed welded box is watertight, with the expected Euler characteristic")
     func closedBoxReport() {
@@ -177,7 +180,7 @@ struct IntegrityReportTests {
         #expect(report.components.count == 1)
         #expect(report.components[0].triangleCount == 12)
         // Regression guard (issue #27/#30 review): weldedUnitCube() originally had two
-        // inward-wound faces — fixed in MeshFixtures.swift, pinned here so it can't regress
+        // inward-wound faces; fixed in MeshFixtures.swift, pinned here so it can't regress
         // silently the way it went unnoticed before any algorithm depended on winding direction.
         #expect(report.isOrientable)
         #expect(report.genus == 0)
@@ -192,7 +195,9 @@ struct IntegrityReportTests {
         #expect(report.genus == 0)
     }
 
-    @Test("A dropped degenerate triangle's orphaned vertex doesn't corrupt Euler characteristic / genus")
+    @Test(
+        "A dropped degenerate triangle's orphaned vertex doesn't corrupt Euler characteristic / genus"
+    )
     func orphanedVertexFromDegenerateTriangleDoesNotSkewEuler() {
         // Same closed tetrahedron as above (Euler 2, genus 0) plus an extra degenerate triangle
         // that references a fresh, otherwise-unused vertex. That vertex must NOT count toward V
@@ -226,10 +231,12 @@ struct IntegrityReportTests {
         #expect(report.nonManifoldVertexCount == 1)
     }
 
-    @Test("Two closed shells pinched at one shared vertex are NOT watertight, despite every edge being manifold")
+    @Test(
+        "Two closed shells pinched at one shared vertex are NOT watertight, despite every edge being manifold"
+    )
     func pinchedClosedShellsAreNotWatertight() {
         // Regression for issue #20 item 2: isWatertight must fold in vertex-manifoldness (per
-        // the cited Open3D convention) — an edge-manifold-only check would report this fixture
+        // the cited Open3D convention): an edge-manifold-only check would report this fixture
         // watertight, since neither shell has a boundary or non-manifold edge.
         let report = bowtiePinchedClosedShellsFixture().integrityReport()
         #expect(report.nonManifoldEdgeCount == 0)

@@ -10,16 +10,16 @@ timestamp: 2026-07-21
 # OCCTSwiftMesh
 
 > Mesh-domain post-processing for the OCCTSwift ecosystem. OCCT ships `BRepMesh_*` for mesh
-> **generation** but no decimation, simplification, smoothing, hole-filling, or remeshing — this
+> **generation** but no decimation, simplification, smoothing, hole-filling, or remeshing: this
 > package fills that gap with permissively-licensed, vendored implementations that consume
 > OCCT-produced `Mesh` instances. It complements the kernel rather than extending it.
 
 ## Role in the ecosystem
 
 - **Cluster:** kernel
-- **Depends on:** [OCCTSwift](https://github.com/SecondMouseAU/OCCTSwift) — source of the `Mesh`
+- **Depends on:** [OCCTSwift](https://github.com/SecondMouseAU/OCCTSwift), source of the `Mesh`
   type these algorithms operate on (floored at OCCTSwift v1.12.9).
-- **Feeds:** downstream consumers of mesh post-processing — e.g. OCCTSwiftScripts' `simplify-mesh`
+- **Feeds:** downstream consumers of mesh post-processing, e.g. OCCTSwiftScripts' `simplify-mesh`
   verb and OCCTMCP's `simplify_mesh` tool. The mesh foundations + segmentation layer is the common
   upstream OCCTMCP's planned raw-mesh analysis tools (`segment_mesh_zones`, `zone_continuity_sweep`,
   `mesh_diagnose`) and OCCTReconstruct are meant to consume, replacing per-consumer vendored
@@ -51,3 +51,4 @@ and OpenCASCADE.
 - [Search before building](policies/search-before-building.md)
 - [Code structure](policies/code-structure.md)
 - [Issue labels and project-board tracking](policies/issue-tracking.md)
+- [Code style](policies/code-style.md)

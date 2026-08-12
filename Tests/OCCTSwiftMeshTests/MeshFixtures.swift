@@ -1,13 +1,16 @@
-import simd
 import OCCTSwift
+import simd
+
 @testable import OCCTSwiftMesh
 
 // Shared synthetic-mesh builders for the mesh-foundations and segmentation test suites.
-// All pure geometry — no OCCT tessellation needed, mirroring CrossSectionTests' approach.
+// All pure geometry; no OCCT tessellation needed, mirroring CrossSectionTests' approach.
 
-/// A unit cube, corner at the origin, vertices SHARED across faces (8 vertices, 12 triangles) —
-/// already welded by construction. CONSISTENTLY outward-wound (`integrityReport().isOrientable
-/// == true`, `genus == 0`, `windingNumber(at: centroid) ≈ 1`) — the original face table had two
+/// A unit cube, corner at the origin, vertices SHARED across faces (8 vertices, 12 triangles),
+/// already welded by construction.
+///
+/// CONSISTENTLY outward-wound (`integrityReport().isOrientable
+/// == true`, `genus == 0`, `windingNumber(at: centroid) ≈ 1`): the original face table had two
 /// faces (the bottom and one side) wound inward, caught during issue #27/#30 review by the first
 /// algorithms in this package to actually depend on winding direction rather than just topology
 /// or per-face dihedral angles. Fixed here (and in `unweldedUnitCube()`, which shares this table)
@@ -17,7 +20,9 @@ func weldedUnitCube() -> Mesh {
         SIMD3(0, 0, 0), SIMD3(1, 0, 0), SIMD3(1, 1, 0), SIMD3(0, 1, 0),
         SIMD3(0, 0, 1), SIMD3(1, 0, 1), SIMD3(1, 1, 1), SIMD3(0, 1, 1),
     ]
-    let faces = [[3, 2, 1, 0], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6], [1, 2, 6, 5], [4, 7, 3, 0]]
+    let faces = [
+        [3, 2, 1, 0], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6], [1, 2, 6, 5], [4, 7, 3, 0],
+    ]
     var indices: [UInt32] = []
     for f in faces {
         indices.append(contentsOf: [UInt32(f[0]), UInt32(f[1]), UInt32(f[2])])
@@ -27,15 +32,19 @@ func weldedUnitCube() -> Mesh {
 }
 
 /// The same unit cube, but EVERY triangle gets its own 3 fresh vertices (36 vertices total, 12
-/// triangles, no two triangles sharing an index anywhere) — the fully-unshared "soup" that raw
-/// OCCT tessellation / STL import actually produces. Geometrically identical to
+/// triangles, no two triangles sharing an index anywhere): the fully-unshared "soup" that raw
+/// OCCT tessellation / STL import actually produces.
+///
+/// Geometrically identical to
 /// `weldedUnitCube()`; welding should collapse it back to 8 vertices.
 func unweldedUnitCube() -> Mesh {
     let corners: [SIMD3<Float>] = [
         SIMD3(0, 0, 0), SIMD3(1, 0, 0), SIMD3(1, 1, 0), SIMD3(0, 1, 0),
         SIMD3(0, 0, 1), SIMD3(1, 0, 1), SIMD3(1, 1, 1), SIMD3(0, 1, 1),
     ]
-    let faces = [[3, 2, 1, 0], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6], [1, 2, 6, 5], [4, 7, 3, 0]]
+    let faces = [
+        [3, 2, 1, 0], [4, 5, 6, 7], [0, 1, 5, 4], [2, 3, 7, 6], [1, 2, 6, 5], [4, 7, 3, 0],
+    ]
     var positions: [SIMD3<Float>] = []
     var indices: [UInt32] = []
     for f in faces {
@@ -49,7 +58,7 @@ func unweldedUnitCube() -> Mesh {
     return Mesh(vertices: positions, indices: indices)!
 }
 
-/// Two unit cubes far apart, each welded internally but sharing no vertices with the other —
+/// Two unit cubes far apart, each welded internally but sharing no vertices with the other:
 /// two connected components.
 func disjointCubesMesh() -> Mesh {
     let a = weldedUnitCube()
@@ -62,8 +71,9 @@ func disjointCubesMesh() -> Mesh {
 }
 
 /// An open cylindrical tube (barrel only, no end caps), welded by construction: shared ring
-/// vertices at every angular step. One connected component; boundary is exactly the top and
-/// bottom rim — 2 boundary loops.
+/// vertices at every angular step.
+///
+/// One connected component; boundary is exactly the top and bottom rim; 2 boundary loops.
 func openCylinderShellMesh(radius: Float = 3, height: Float = 5, segments: Int = 16) -> Mesh {
     var positions: [SIMD3<Float>] = []
     for k in 0..<2 {
@@ -74,20 +84,27 @@ func openCylinderShellMesh(radius: Float = 3, height: Float = 5, segments: Int =
         }
     }
     var indices: [UInt32] = []
-    let lo: UInt32 = 0, hi = UInt32(segments)
+    let lo: UInt32 = 0
+    let hi = UInt32(segments)
     for i in 0..<segments {
-        let a = lo + UInt32(i), b = lo + UInt32((i + 1) % segments)
-        let c = hi + UInt32(i), d = hi + UInt32((i + 1) % segments)
+        let a = lo + UInt32(i)
+        let b = lo + UInt32((i + 1) % segments)
+        let c = hi + UInt32(i)
+        let d = hi + UInt32((i + 1) % segments)
         indices.append(contentsOf: [a, b, c, b, d, c])
     }
     return Mesh(vertices: positions, indices: indices)!
 }
 
-/// A coarse capped cylinder: `sides`-sided barrel (adjacent facets 360/sides° apart — coarse
-/// enough to shatter under a 20° dihedral threshold) plus flat top/bottom disk caps. Welded by
+/// A coarse capped cylinder: `sides`-sided barrel (adjacent facets 360/sides° apart, coarse
+/// enough to shatter under a 20° dihedral threshold) plus flat top/bottom disk caps.
+///
+/// Welded by
 /// construction. Segmentation should merge the shattered barrel facets back into one cylinder
-/// region, while the caps (already-coplanar fans) stay separate — 3 regions total.
-func coarseCappedCylinderMesh(radius: Float = 4, sides: Int = 12, rings: Int = 5, height: Float = 4) -> Mesh {
+/// region, while the caps (already-coplanar fans) stay separate; 3 regions total.
+func coarseCappedCylinderMesh(radius: Float = 4, sides: Int = 12, rings: Int = 5, height: Float = 4)
+    -> Mesh
+{
     var positions: [SIMD3<Float>] = []
     for k in 0..<rings {
         let z = Float(k) / Float(rings - 1) * height
@@ -96,66 +113,73 @@ func coarseCappedCylinderMesh(radius: Float = 4, sides: Int = 12, rings: Int = 5
             positions.append(SIMD3(radius * cos(a), radius * sin(a), z))
         }
     }
-    let bottomCenter = UInt32(positions.count); positions.append(SIMD3(0, 0, 0))
-    let topCenter = UInt32(positions.count); positions.append(SIMD3(0, 0, height))
+    let bottomCenter = UInt32(positions.count)
+    positions.append(SIMD3(0, 0, 0))
+    let topCenter = UInt32(positions.count)
+    positions.append(SIMD3(0, 0, height))
 
     var indices: [UInt32] = []
     for k in 0..<(rings - 1) {
-        let lo = UInt32(k * sides), hi = UInt32((k + 1) * sides)
+        let lo = UInt32(k * sides)
+        let hi = UInt32((k + 1) * sides)
         for i in 0..<sides {
-            let a = lo + UInt32(i), b = lo + UInt32((i + 1) % sides)
-            let c = hi + UInt32(i), d = hi + UInt32((i + 1) % sides)
+            let a = lo + UInt32(i)
+            let b = lo + UInt32((i + 1) % sides)
+            let c = hi + UInt32(i)
+            let d = hi + UInt32((i + 1) % sides)
             indices.append(contentsOf: [a, b, c, b, d, c])
         }
     }
     for i in 0..<sides {
-        let a = UInt32(i), b = UInt32((i + 1) % sides)
+        let a = UInt32(i)
+        let b = UInt32((i + 1) % sides)
         indices.append(contentsOf: [bottomCenter, b, a])
     }
     let topRingBase = UInt32((rings - 1) * sides)
     for i in 0..<sides {
-        let a = topRingBase + UInt32(i), b = topRingBase + UInt32((i + 1) % sides)
+        let a = topRingBase + UInt32(i)
+        let b = topRingBase + UInt32((i + 1) % sides)
         indices.append(contentsOf: [topCenter, a, b])
     }
     return Mesh(vertices: positions, indices: indices)!
 }
 
 /// A closed, orientable tetrahedron plus one extra degenerate triangle that references a fresh,
-/// otherwise-unused vertex — that vertex becomes an orphan once the degenerate triangle is
-/// dropped during `integrityReport()`'s cleanup pass.
+/// otherwise-unused vertex; that vertex becomes an orphan once the degenerate triangle is
+/// dropped during the cleanup pass of `integrityReport()`.
 func tetrahedronWithOrphanDegenerateTriangle() -> Mesh {
     let base = orientableTetrahedronMesh()
     var positions = base.vertices
     positions.append(SIMD3(5, 5, 5))
     var indices = base.indices
-    indices.append(contentsOf: [0, 0, UInt32(positions.count - 1)])   // degenerate: repeats vertex 0
+    indices.append(contentsOf: [0, 0, UInt32(positions.count - 1)])  // degenerate: repeats vertex 0
     return Mesh(vertices: positions, indices: indices)!
 }
 
-/// Three triangles sharing one edge (a "book") — a non-manifold EDGE (valence 3), no
+/// Three triangles sharing one edge (a "book"): a non-manifold EDGE (valence 3), no
 /// non-manifold vertex.
 func nonManifoldEdgeFixture() -> Mesh {
     let p: [SIMD3<Float>] = [
-        SIMD3(0, 0, 0), SIMD3(1, 0, 0),   // shared edge (0, 1)
+        SIMD3(0, 0, 0), SIMD3(1, 0, 0),  // shared edge (0, 1)
         SIMD3(0, 1, 0), SIMD3(0, -1, 0), SIMD3(0, 0, 1),
     ]
     let indices: [UInt32] = [0, 1, 2, 1, 0, 3, 0, 1, 4]
     return Mesh(vertices: p, indices: indices)!
 }
 
-/// Two triangles sharing exactly one vertex (a "bowtie" pinch point) — a non-manifold VERTEX,
+/// Two triangles sharing exactly one vertex (a "bowtie" pinch point): a non-manifold VERTEX,
 /// no non-manifold edge.
 func bowtieVertexFixture() -> Mesh {
     let p: [SIMD3<Float>] = [
-        SIMD3(0, 0, 0), SIMD3(1, 0, 0), SIMD3(0, 1, 0),   // triangle A, shares vertex index 2
-        SIMD3(0, 1, 1), SIMD3(1, 1, 1),                   // triangle B
+        SIMD3(0, 0, 0), SIMD3(1, 0, 0), SIMD3(0, 1, 0),  // triangle A, shares vertex index 2
+        SIMD3(0, 1, 1), SIMD3(1, 1, 1),  // triangle B
     ]
     let indices: [UInt32] = [0, 1, 2, 2, 3, 4]
     return Mesh(vertices: p, indices: indices)!
 }
 
 /// A closed, watertight tetrahedron with hand-verified CONSISTENT outward winding (every shared
-/// edge is traversed in opposite directions by its two triangles) — for asserting
+/// edge is traversed in opposite directions by its two triangles); for asserting
 /// `isOrientable`/`genus`, which need a known-consistent fixture rather than an
 /// orientation-agnostic one.
 func orientableTetrahedronMesh() -> Mesh {
@@ -173,32 +197,35 @@ func duplicateAndDegenerateFixture() -> Mesh {
 }
 
 /// Two closed, watertight, orientable tetrahedra pinched together at exactly one shared vertex
-/// (a bowtie of closed shells, not just two open triangles) — every welded edge is still
+/// (a bowtie of closed shells, not just two open triangles); every welded edge is still
 /// shared by exactly two triangles (no boundary, no non-manifold edge), so an edge-manifold-only
 /// watertight check reports this watertight; the shared apex is a non-manifold VERTEX (two
 /// disjoint triangle fans meeting at one point), which is the case `isWatertight` must catch.
 func bowtiePinchedClosedShellsFixture() -> Mesh {
     let p: [SIMD3<Float>] = [
-        SIMD3(0, 0, 0),                                            // 0: shared apex
-        SIMD3(1, 0, 0), SIMD3(0, 1, 0), SIMD3(0, 0, 1),             // 1-3: shell A's other verts
-        SIMD3(10, 0, 0), SIMD3(0, 10, 0), SIMD3(0, 0, 10),          // 4-6: shell B's other verts
+        SIMD3(0, 0, 0),  // 0: shared apex
+        SIMD3(1, 0, 0), SIMD3(0, 1, 0), SIMD3(0, 0, 1),  // 1-3: shell A's other verts
+        SIMD3(10, 0, 0), SIMD3(0, 10, 0), SIMD3(0, 0, 10),  // 4-6: shell B's other verts
     ]
     let a: [UInt32] = [0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3]
     let b: [UInt32] = [0, 5, 4, 0, 4, 6, 0, 6, 5, 4, 5, 6]
     return Mesh(vertices: p, indices: a + b)!
 }
 
-/// The same tetrahedron as `orientableTetrahedronMesh()`, but one face's winding is flipped —
+/// The same tetrahedron as `orientableTetrahedronMesh()`, but one face's winding is flipped:
 /// a shared edge is now traversed in the SAME direction by both its triangles instead of
 /// opposite directions, breaking the consistent orientation `isOrientable` checks for.
 func nonOrientableTetrahedronMesh() -> Mesh {
     let p: [SIMD3<Float>] = [SIMD3(0, 0, 0), SIMD3(1, 0, 0), SIMD3(0, 1, 0), SIMD3(0, 0, 1)]
-    let indices: [UInt32] = [0, 2, 1, 0, 1, 3, 0, 2, 3, 1, 2, 3]   // 3rd face flipped: 0,3,2 -> 0,2,3
+    // 3rd face flipped: 0,3,2 -> 0,2,3
+    let indices: [UInt32] = [0, 2, 1, 0, 1, 3, 0, 2, 3, 1, 2, 3]
     return Mesh(vertices: p, indices: indices)!
 }
 
-/// Duplicates every triangle's vertices into fresh, per-triangle-unique slots — the fully-
-/// unshared "soup" form raw OCCT tessellation / STL import produces. Geometrically identical to
+/// Duplicates every triangle's vertices into fresh, per-triangle-unique slots: the fully-
+/// unshared "soup" form raw OCCT tessellation / STL import produces.
+///
+/// Geometrically identical to
 /// `mesh`; welding should collapse it back. A generic counterpart to `unweldedUnitCube()` for
 /// meshes built elsewhere (e.g. `coarseCappedCylinderMesh()`), for exercising the internal-weld
 /// path on a curved body, not just a box.
@@ -216,42 +243,53 @@ func unwelded(_ mesh: Mesh) -> Mesh {
     return Mesh(vertices: positions, indices: indices)!
 }
 
-/// A closed, watertight, orientable torus (genus 1) — a structured (major × minor) grid with
+/// A closed, watertight, orientable torus (genus 1): a structured (major × minor) grid with
 /// both directions wrapped, triangulated with a uniform diagonal split per quad so winding stays
-/// consistent everywhere. Welded by construction (shared ring vertices).
-func torusMesh(majorRadius R: Float = 5, minorRadius r: Float = 1.5,
-               majorSegments: Int = 12, minorSegments: Int = 8) -> Mesh {
+/// consistent everywhere.
+///
+/// Welded by construction (shared ring vertices).
+func torusMesh(
+    majorRadius majorR: Float = 5, minorRadius r: Float = 1.5,
+    majorSegments: Int = 12, minorSegments: Int = 8
+) -> Mesh {
     var positions: [SIMD3<Float>] = []
     for i in 0..<majorSegments {
         let u = Float(i) / Float(majorSegments) * 2 * .pi
         for j in 0..<minorSegments {
             let v = Float(j) / Float(minorSegments) * 2 * .pi
-            let x = (R + r * cos(v)) * cos(u)
-            let y = (R + r * cos(v)) * sin(u)
+            let x = (majorR + r * cos(v)) * cos(u)
+            let y = (majorR + r * cos(v)) * sin(u)
             let z = r * sin(v)
             positions.append(SIMD3(x, y, z))
         }
     }
     func vertexIndex(_ i: Int, _ j: Int) -> UInt32 {
-        UInt32(((i + majorSegments) % majorSegments) * minorSegments + ((j + minorSegments) % minorSegments))
+        UInt32(
+            ((i + majorSegments) % majorSegments) * minorSegments
+                + ((j + minorSegments) % minorSegments))
     }
     var indices: [UInt32] = []
     for i in 0..<majorSegments {
         for j in 0..<minorSegments {
-            let a = vertexIndex(i, j), b = vertexIndex(i + 1, j)
-            let c = vertexIndex(i, j + 1), d = vertexIndex(i + 1, j + 1)
+            let a = vertexIndex(i, j)
+            let b = vertexIndex(i + 1, j)
+            let c = vertexIndex(i, j + 1)
+            let d = vertexIndex(i + 1, j + 1)
             indices.append(contentsOf: [a, b, d, a, d, c])
         }
     }
     return Mesh(vertices: positions, indices: indices)!
 }
 
-/// A shallow cylindrical arc strip — the kiha40-roof scenario from issue #20 item 4: a big
+/// A shallow cylindrical arc strip: the kiha40-roof scenario from issue #20 item 4: a big
 /// radius (default 500) swept over a small angular span, so the surface deviates from its
-/// best-fit plane by only a modest sagitta relative to the strip's own footprint. Welded by
-/// construction (shared ring vertices), one connected patch.
-func shallowCylindricalArcMesh(radius: Float = 500, widthUnits: Float = 200, axialUnits: Float = 200,
-                               sides: Int = 10, rings: Int = 6) -> Mesh {
+/// best-fit plane by only a modest sagitta relative to the strip's own footprint.
+///
+/// Welded by construction (shared ring vertices), one connected patch.
+func shallowCylindricalArcMesh(
+    radius: Float = 500, widthUnits: Float = 200, axialUnits: Float = 200,
+    sides: Int = 10, rings: Int = 6
+) -> Mesh {
     let angularSpan = widthUnits / radius
     var positions: [SIMD3<Float>] = []
     for k in 0..<rings {
@@ -263,21 +301,27 @@ func shallowCylindricalArcMesh(radius: Float = 500, widthUnits: Float = 200, axi
     }
     var indices: [UInt32] = []
     for k in 0..<(rings - 1) {
-        let lo = UInt32(k * sides), hi = UInt32((k + 1) * sides)
+        let lo = UInt32(k * sides)
+        let hi = UInt32((k + 1) * sides)
         for i in 0..<(sides - 1) {
-            let a = lo + UInt32(i), b = lo + UInt32(i + 1)
-            let c = hi + UInt32(i), d = hi + UInt32(i + 1)
+            let a = lo + UInt32(i)
+            let b = lo + UInt32(i + 1)
+            let c = hi + UInt32(i)
+            let d = hi + UInt32(i + 1)
             indices.append(contentsOf: [a, b, c, b, d, c])
         }
     }
     return Mesh(vertices: positions, indices: indices)!
 }
 
-/// An open cylindrical shell (no end caps) with multiple axial rings — unlike
-/// `openCylinderShellMesh`'s fixed 2 rings (every vertex a boundary vertex), interior rings here
-/// are away from the top/bottom open edges and get a complete triangle fan. Welded by
-/// construction (shared ring vertices); axis is +Z.
-func openCylinderMultiRingMesh(radius: Float = 6, height: Float = 20, segments: Int = 24, rings: Int = 8) -> Mesh {
+/// An open cylindrical shell (no end caps) with multiple axial rings; unlike the fixed 2 rings
+/// of `openCylinderShellMesh` (every vertex a boundary vertex), interior rings here
+/// are away from the top/bottom open edges and get a complete triangle fan.
+///
+/// Welded by construction (shared ring vertices); axis is +Z.
+func openCylinderMultiRingMesh(
+    radius: Float = 6, height: Float = 20, segments: Int = 24, rings: Int = 8
+) -> Mesh {
     var positions: [SIMD3<Float>] = []
     for k in 0..<rings {
         let z = Float(k) / Float(rings - 1) * height
@@ -288,21 +332,28 @@ func openCylinderMultiRingMesh(radius: Float = 6, height: Float = 20, segments: 
     }
     var indices: [UInt32] = []
     for k in 0..<(rings - 1) {
-        let lo = UInt32(k * segments), hi = UInt32((k + 1) * segments)
+        let lo = UInt32(k * segments)
+        let hi = UInt32((k + 1) * segments)
         for i in 0..<segments {
-            let a = lo + UInt32(i), b = lo + UInt32((i + 1) % segments)
-            let c = hi + UInt32(i), d = hi + UInt32((i + 1) % segments)
+            let a = lo + UInt32(i)
+            let b = lo + UInt32((i + 1) % segments)
+            let c = hi + UInt32(i)
+            let d = hi + UInt32((i + 1) % segments)
             indices.append(contentsOf: [a, b, c, b, d, c])
         }
     }
     return Mesh(vertices: positions, indices: indices)!
 }
 
-/// An open "zone" cut from a sphere (a latitude band, no pole caps) — wrapped in longitude, open
-/// top/bottom in latitude. Avoids the pole singularity a full UV-sphere would introduce, so every
+/// An open "zone" cut from a sphere (a latitude band, no pole caps); wrapped in longitude, open
+/// top/bottom in latitude.
+///
+/// Avoids the pole singularity a full UV-sphere would introduce, so every
 /// interior vertex has the same well-defined analytic curvature (`k1 == k2 == 1/radius`). Welded
 /// by construction (shared ring vertices in longitude).
-func sphereZoneMesh(radius: Float = 10, latitudeSpanDegrees: Float = 60, segments: Int = 24, rings: Int = 10) -> Mesh {
+func sphereZoneMesh(
+    radius: Float = 10, latitudeSpanDegrees: Float = 60, segments: Int = 24, rings: Int = 10
+) -> Mesh {
     var positions: [SIMD3<Float>] = []
     let halfSpan = latitudeSpanDegrees * .pi / 180 / 2
     for k in 0..<rings {
@@ -317,10 +368,13 @@ func sphereZoneMesh(radius: Float = 10, latitudeSpanDegrees: Float = 60, segment
     }
     var indices: [UInt32] = []
     for k in 0..<(rings - 1) {
-        let lo = UInt32(k * segments), hi = UInt32((k + 1) * segments)
+        let lo = UInt32(k * segments)
+        let hi = UInt32((k + 1) * segments)
         for i in 0..<segments {
-            let a = lo + UInt32(i), b = lo + UInt32((i + 1) % segments)
-            let c = hi + UInt32(i), d = hi + UInt32((i + 1) % segments)
+            let a = lo + UInt32(i)
+            let b = lo + UInt32((i + 1) % segments)
+            let c = hi + UInt32(i)
+            let d = hi + UInt32((i + 1) % segments)
             indices.append(contentsOf: [a, b, c, b, d, c])
         }
     }
@@ -329,13 +383,17 @@ func sphereZoneMesh(radius: Float = 10, latitudeSpanDegrees: Float = 60, segment
 
 /// `sphereZoneMesh()` with one extra degenerate SLIVER triangle glued onto the edge between
 /// vertices 0 and 1 (a needle: two shared existing vertices plus one new vertex placed almost
-/// exactly on the line between them) — for exercising `vertexCurvatures()`'s sliver-exclusion
-/// guard without perturbing the rest of the mesh's analytic curvature.
-func sphereZoneMeshWithSliver(radius: Float = 10, latitudeSpanDegrees: Float = 60, segments: Int = 24, rings: Int = 10) -> Mesh {
-    let base = sphereZoneMesh(radius: radius, latitudeSpanDegrees: latitudeSpanDegrees, segments: segments, rings: rings)
+/// exactly on the line between them); for exercising the sliver-exclusion guard of
+/// `vertexCurvatures()` without perturbing the rest of the mesh's analytic curvature.
+func sphereZoneMeshWithSliver(
+    radius: Float = 10, latitudeSpanDegrees: Float = 60, segments: Int = 24, rings: Int = 10
+) -> Mesh {
+    let base = sphereZoneMesh(
+        radius: radius, latitudeSpanDegrees: latitudeSpanDegrees, segments: segments, rings: rings)
     var positions = base.vertices
     var indices = base.indices
-    let a = positions[0], b = positions[1]
+    let a = positions[0]
+    let b = positions[1]
     let ab = b - a
     let helper: SIMD3<Float> = abs(ab.x) < abs(ab.y) ? SIMD3(1, 0, 0) : SIMD3(0, 1, 0)
     let perpDir = simd_normalize(simd_cross(ab, helper))
@@ -346,10 +404,14 @@ func sphereZoneMeshWithSliver(radius: Float = 10, latitudeSpanDegrees: Float = 6
     return Mesh(vertices: positions, indices: indices)!
 }
 
-/// A flat rectangular grid in the XY plane (`z == 0`) — the trivial curvature case:
+/// A flat rectangular grid in the XY plane (`z == 0`): the trivial curvature case:
 /// `k1 == k2 == 0` everywhere, including at boundary vertices (flat is flat regardless of an
-/// incomplete triangle fan). Welded by construction (shared grid vertices).
-func flatGridMesh(width: Float = 20, depth: Float = 20, segmentsX: Int = 10, segmentsY: Int = 10) -> Mesh {
+/// incomplete triangle fan).
+///
+/// Welded by construction (shared grid vertices).
+func flatGridMesh(width: Float = 20, depth: Float = 20, segmentsX: Int = 10, segmentsY: Int = 10)
+    -> Mesh
+{
     var positions: [SIMD3<Float>] = []
     for j in 0...segmentsY {
         let y = Float(j) / Float(segmentsY) * depth
@@ -362,8 +424,10 @@ func flatGridMesh(width: Float = 20, depth: Float = 20, segmentsX: Int = 10, seg
     var indices: [UInt32] = []
     for j in 0..<segmentsY {
         for i in 0..<segmentsX {
-            let a = UInt32(j * cols + i), b = UInt32(j * cols + i + 1)
-            let c = UInt32((j + 1) * cols + i), d = UInt32((j + 1) * cols + i + 1)
+            let a = UInt32(j * cols + i)
+            let b = UInt32(j * cols + i + 1)
+            let c = UInt32((j + 1) * cols + i)
+            let d = UInt32((j + 1) * cols + i + 1)
             indices.append(contentsOf: [a, b, d, a, d, c])
         }
     }
@@ -371,20 +435,27 @@ func flatGridMesh(width: Float = 20, depth: Float = 20, segmentsX: Int = 10, seg
 }
 
 /// A genuinely 3D-shaped ("bumpy terrain") rectangular patch: `z = amplitude · sin(x·freq) ·
-/// cos(y·freq·0.7)` over `xRange`/`yRange`, sampled on a regular grid — real curvature/asymmetry
+/// cos(y·freq·0.7)` over `xRange`/`yRange`, sampled on a regular grid; real curvature/asymmetry
 /// everywhere (no flat or rotationally-symmetric regions to confuse ICP correspondence), and
 /// GLOBALLY CONSISTENT world coordinates: two patches built from overlapping ranges genuinely
 /// overlap in world space (same `z = f(x, y)` everywhere), for partial-overlap alignment tests.
+///
 /// Welded by construction (shared grid vertices).
-func bumpyPatchMesh(xRange: ClosedRange<Float>, yRange: ClosedRange<Float> = 0...20,
-                    segmentsPerUnit: Float = 1, amplitude: Float = 3, frequency: Float = 0.3) -> Mesh {
+func bumpyPatchMesh(
+    xRange: ClosedRange<Float>, yRange: ClosedRange<Float> = 0...20,
+    segmentsPerUnit: Float = 1, amplitude: Float = 3, frequency: Float = 0.3
+) -> Mesh {
     let segmentsX = max(2, Int((xRange.upperBound - xRange.lowerBound) * segmentsPerUnit))
     let segmentsY = max(2, Int((yRange.upperBound - yRange.lowerBound) * segmentsPerUnit))
     var positions: [SIMD3<Float>] = []
     for j in 0...segmentsY {
-        let y = yRange.lowerBound + Float(j) / Float(segmentsY) * (yRange.upperBound - yRange.lowerBound)
+        let y =
+            yRange.lowerBound + Float(j) / Float(segmentsY)
+            * (yRange.upperBound - yRange.lowerBound)
         for i in 0...segmentsX {
-            let x = xRange.lowerBound + Float(i) / Float(segmentsX) * (xRange.upperBound - xRange.lowerBound)
+            let x =
+                xRange.lowerBound + Float(i) / Float(segmentsX)
+                * (xRange.upperBound - xRange.lowerBound)
             let z = amplitude * sin(x * frequency) * cos(y * frequency * 0.7)
             positions.append(SIMD3(x, y, z))
         }
@@ -393,8 +464,10 @@ func bumpyPatchMesh(xRange: ClosedRange<Float>, yRange: ClosedRange<Float> = 0..
     var indices: [UInt32] = []
     for j in 0..<segmentsY {
         for i in 0..<segmentsX {
-            let a = UInt32(j * cols + i), b = UInt32(j * cols + i + 1)
-            let c = UInt32((j + 1) * cols + i), d = UInt32((j + 1) * cols + i + 1)
+            let a = UInt32(j * cols + i)
+            let b = UInt32(j * cols + i + 1)
+            let c = UInt32((j + 1) * cols + i)
+            let d = UInt32((j + 1) * cols + i + 1)
             indices.append(contentsOf: [a, b, d, a, d, c])
         }
     }
@@ -402,17 +475,21 @@ func bumpyPatchMesh(xRange: ClosedRange<Float>, yRange: ClosedRange<Float> = 0..
 }
 
 /// A mostly-flat rectangular grid (`z ≈ 0` almost everywhere) with a single localized Gaussian
-/// bump — the normal-space-sampling motivating case: the bump's tilted-normal vertices are a
-/// small minority of the mesh, everywhere else the normal is uniformly `(0, 0, 1)`. One regular
-/// grid (no stitching), welded by construction (shared grid vertices).
-func flatWithBumpMesh(size: Float = 40, segments: Int = 40, bumpCenter: SIMD2<Float> = SIMD2(20, 20),
-                      bumpSigma: Float = 1.5, bumpHeight: Float = 4) -> Mesh {
+/// bump: the normal-space-sampling motivating case: the bump's tilted-normal vertices are a
+/// small minority of the mesh, everywhere else the normal is uniformly `(0, 0, 1)`.
+///
+/// One regular grid (no stitching), welded by construction (shared grid vertices).
+func flatWithBumpMesh(
+    size: Float = 40, segments: Int = 40, bumpCenter: SIMD2<Float> = SIMD2(20, 20),
+    bumpSigma: Float = 1.5, bumpHeight: Float = 4
+) -> Mesh {
     var positions: [SIMD3<Float>] = []
     for j in 0...segments {
         let y = Float(j) / Float(segments) * size
         for i in 0...segments {
             let x = Float(i) / Float(segments) * size
-            let dx = x - bumpCenter.x, dy = y - bumpCenter.y
+            let dx = x - bumpCenter.x
+            let dy = y - bumpCenter.y
             let z = bumpHeight * exp(-(dx * dx + dy * dy) / (2 * bumpSigma * bumpSigma))
             positions.append(SIMD3(x, y, z))
         }
@@ -421,37 +498,45 @@ func flatWithBumpMesh(size: Float = 40, segments: Int = 40, bumpCenter: SIMD2<Fl
     var indices: [UInt32] = []
     for j in 0..<segments {
         for i in 0..<segments {
-            let a = UInt32(j * cols + i), b = UInt32(j * cols + i + 1)
-            let c = UInt32((j + 1) * cols + i), d = UInt32((j + 1) * cols + i + 1)
+            let a = UInt32(j * cols + i)
+            let b = UInt32(j * cols + i + 1)
+            let c = UInt32((j + 1) * cols + i)
+            let d = UInt32((j + 1) * cols + i + 1)
             indices.append(contentsOf: [a, b, d, a, d, c])
         }
     }
     return Mesh(vertices: positions, indices: indices)!
 }
 
-/// A UV sphere (lat/long grid, poles collapsed to single vertices) — welded by construction.
+/// A UV sphere (lat/long grid, poles collapsed to single vertices); welded by construction.
+///
 /// CONSISTENTLY outward-wound (`integrityReport().isOrientable == true`,
-/// `windingNumber(at: center) ≈ 1`) — found NON-ORIENTABLE during issue #27/#30 review (the two
+/// `windingNumber(at: center) ≈ 1`); found NON-ORIENTABLE during issue #27/#30 review (the two
 /// pole fans wound outward while every band quad wound inward, `-0.93` instead of a clean `-1` at
 /// the center: a mixed-winding signature, not simply "the whole thing flipped"). Fixed by
 /// reversing the band quad's own diagonal split; the pole fans were already correct. Scoped to
-/// THIS fixture only — several others share the visually-similar `[a, b, d, a, d, c]` quad idiom
+/// THIS fixture only; several others share the visually-similar `[a, b, d, a, d, c]` quad idiom
 /// with their own independently-verified conventions (e.g. the torus genus test) and are
 /// untouched.
 func sphereMesh(radius: Float = 5, latSegments: Int = 12, lonSegments: Int = 16) -> Mesh {
     var positions: [SIMD3<Float>] = []
-    let northPole = UInt32(0); positions.append(SIMD3(0, 0, radius))
+    let northPole = UInt32(0)
+    positions.append(SIMD3(0, 0, radius))
     for i in 1..<latSegments {
-        let theta = Float(i) / Float(latSegments) * .pi   // 0 (north) ... pi (south)
-        let z = radius * cos(theta), r = radius * sin(theta)
+        let theta = Float(i) / Float(latSegments) * .pi  // 0 (north) ... pi (south)
+        let z = radius * cos(theta)
+        let r = radius * sin(theta)
         for j in 0..<lonSegments {
             let phi = Float(j) / Float(lonSegments) * 2 * .pi
             positions.append(SIMD3(r * cos(phi), r * sin(phi), z))
         }
     }
-    let southPole = UInt32(positions.count); positions.append(SIMD3(0, 0, -radius))
+    let southPole = UInt32(positions.count)
+    positions.append(SIMD3(0, 0, -radius))
 
-    func ring(_ i: Int, _ j: Int) -> UInt32 { UInt32(1 + (i - 1) * lonSegments + (j % lonSegments)) }
+    func ring(_ i: Int, _ j: Int) -> UInt32 {
+        UInt32(1 + (i - 1) * lonSegments + (j % lonSegments))
+    }
 
     var indices: [UInt32] = []
     for j in 0..<lonSegments {
@@ -459,25 +544,34 @@ func sphereMesh(radius: Float = 5, latSegments: Int = 12, lonSegments: Int = 16)
     }
     for i in 1..<(latSegments - 1) {
         for j in 0..<lonSegments {
-            let a = ring(i, j), b = ring(i, j + 1), c = ring(i + 1, j), d = ring(i + 1, j + 1)
+            let a = ring(i, j)
+            let b = ring(i, j + 1)
+            let c = ring(i + 1, j)
+            let d = ring(i + 1, j + 1)
             indices.append(contentsOf: [a, d, b, a, c, d])
         }
     }
     for j in 0..<lonSegments {
-        indices.append(contentsOf: [southPole, ring(latSegments - 1, j + 1), ring(latSegments - 1, j)])
+        indices.append(contentsOf: [
+            southPole, ring(latSegments - 1, j + 1), ring(latSegments - 1, j),
+        ])
     }
     return Mesh(vertices: positions, indices: indices)!
 }
 
 /// The lateral (side) surface only of a cone, as a multi-ring stack tapering to the apex (NOT a
-/// single fan from one apex vertex — a fan only samples 2 distinct heights (apex + base rim),
+/// single fan from one apex vertex: a fan only samples 2 distinct heights (apex + base rim),
 /// too degenerate a point set to expose the surface's true 1-parameter rotational symmetry
-/// without spurious extra ones). A genuine surface of revolution, distinct from a cylinder
+/// without spurious extra ones).
+///
+/// A genuine surface of revolution, distinct from a cylinder
 /// because its radius varies along the axis. Welded by construction (shared ring vertices).
-func coneLateralMesh(baseRadius: Float = 4, height: Float = 10, segments: Int = 16, rings: Int = 8) -> Mesh {
+func coneLateralMesh(baseRadius: Float = 4, height: Float = 10, segments: Int = 16, rings: Int = 8)
+    -> Mesh
+{
     var positions: [SIMD3<Float>] = []
     for k in 0..<rings {
-        let t = Float(k) / Float(rings - 1)   // 0 at base, 1 near the apex
+        let t = Float(k) / Float(rings - 1)  // 0 at base, 1 near the apex
         let z = t * height
         let r = baseRadius * (1 - t)
         for i in 0..<segments {
@@ -487,30 +581,36 @@ func coneLateralMesh(baseRadius: Float = 4, height: Float = 10, segments: Int = 
     }
     var indices: [UInt32] = []
     for k in 0..<(rings - 1) {
-        let lo = UInt32(k * segments), hi = UInt32((k + 1) * segments)
+        let lo = UInt32(k * segments)
+        let hi = UInt32((k + 1) * segments)
         for i in 0..<segments {
-            let a = lo + UInt32(i), b = lo + UInt32((i + 1) % segments)
-            let c = hi + UInt32(i), d = hi + UInt32((i + 1) % segments)
+            let a = lo + UInt32(i)
+            let b = lo + UInt32((i + 1) % segments)
+            let c = hi + UInt32(i)
+            let d = hi + UInt32((i + 1) % segments)
             indices.append(contentsOf: [a, b, c, b, d, c])
         }
     }
     return Mesh(vertices: positions, indices: indices)!
 }
 
-/// The lateral surface of a triangular prism — flat quad faces only (no end caps), extruded
-/// along +Z as a multi-ring stack, each ring's profile subdivided along every edge (NOT just the
-/// 3 corners repeated per ring: EVERY vertex of a 3-corners-only profile sits exactly on a sharp
-/// crease between two faces, so `vertexNormals()`'s area-weighted averaging blends the two
-/// adjacent faces' very different normals at every single sample — there are no "interior",
-/// single-face-normal points to sample at all. Subdividing each edge gives most vertices a clean,
-/// unblended normal, the way any real coarsely-triangulated flat face would.) A non-circular
-/// cross-section rules out any rotational symmetry, leaving pure translation as the only
-/// slippable motion. Welded by construction.
+/// The lateral surface of a triangular prism; flat quad faces only (no end caps), extruded
+/// along +Z as a multi-ring stack, each ring's profile subdivided along every edge.
+///
+/// NOT just the 3 corners repeated per ring: EVERY vertex of a 3-corners-only profile sits
+/// exactly on a sharp crease between two faces, so the area-weighted averaging of
+/// `vertexNormals()` blends the two adjacent faces' very different normals at every single
+/// sample; there are no "interior", single-face-normal points to sample at all. Subdividing
+/// each edge gives most vertices a clean, unblended normal, the way any real
+/// coarsely-triangulated flat face would.
+///
+/// A non-circular cross-section rules out any rotational symmetry, leaving pure translation as
+/// the only slippable motion. Welded by construction.
 ///
 /// Default `height` is deliberately modest relative to the ~4-unit base: slippage analysis
 /// normalizes a region's points to a UNIT BOX by a single isotropic scale factor (see
 /// `docs/algorithms/slippage.md`), so a MUCH taller/thinner prism (say height 50 against a base
-/// of 4) has its cross-sectional extent shrink toward zero in normalized coordinates — at extreme
+/// of 4) has its cross-sectional extent shrink toward zero in normalized coordinates; at extreme
 /// aspect ratios the triangular cross-section becomes a vanishingly small perturbation and the
 /// prism genuinely starts to APPROXIMATE a rotationally-symmetric (cylinder-like) shape in the
 /// normalized frame. That's a real property of the normalization, not a bug; this fixture just
@@ -521,20 +621,27 @@ func triangularPrismLateralMesh(height: Float = 4, rings: Int = 8, edgeSegments:
     func profilePoint(_ i: Int) -> SIMD2<Float> {
         let edge = i / edgeSegments
         let t = Float(i % edgeSegments) / Float(edgeSegments)
-        let a = base[edge], b = base[(edge + 1) % base.count]
+        let a = base[edge]
+        let b = base[(edge + 1) % base.count]
         return a + (b - a) * t
     }
     var positions: [SIMD3<Float>] = []
     for k in 0..<rings {
         let z = Float(k) / Float(rings - 1) * height
-        for i in 0..<sides { let p = profilePoint(i); positions.append(SIMD3(p.x, p.y, z)) }
+        for i in 0..<sides {
+            let p = profilePoint(i)
+            positions.append(SIMD3(p.x, p.y, z))
+        }
     }
     var indices: [UInt32] = []
     for k in 0..<(rings - 1) {
-        let lo = UInt32(k * sides), hi = UInt32((k + 1) * sides)
+        let lo = UInt32(k * sides)
+        let hi = UInt32((k + 1) * sides)
         for i in 0..<sides {
-            let a = lo + UInt32(i), b = lo + UInt32((i + 1) % sides)
-            let c = hi + UInt32(i), d = hi + UInt32((i + 1) % sides)
+            let a = lo + UInt32(i)
+            let b = lo + UInt32((i + 1) % sides)
+            let c = hi + UInt32(i)
+            let d = hi + UInt32((i + 1) % sides)
             indices.append(contentsOf: [a, b, c, b, d, c])
         }
     }
@@ -542,19 +649,22 @@ func triangularPrismLateralMesh(height: Float = 4, rings: Int = 8, edgeSegments:
 }
 
 /// A helicoid strip: `(v·cos(u), v·sin(u), pitch·u / 2π)` for `v ∈ [innerRadius, outerRadius]`,
-/// `u` over several full turns — the textbook screw-symmetric ruled surface (rotating by du about
-/// Z while translating by `pitch·du/2π` along Z maps the surface exactly onto itself). Welded by
-/// construction (shared grid vertices).
+/// `u` over several full turns: the textbook screw-symmetric ruled surface (rotating by du about
+/// Z while translating by `pitch·du/2π` along Z maps the surface exactly onto itself).
+///
+/// Welded by construction (shared grid vertices).
 ///
 /// Default `pitch`/`turns` were tuned empirically, not picked arbitrarily: as `pitch → 0` (with
 /// several turns), the strip degenerates toward a near-planar spiral ramp and genuinely PICKS UP
-/// plane-like extra near-degeneracy (a real property of the surface, not a fixture bug — a
+/// plane-like extra near-degeneracy (a real property of the surface, not a fixture bug, a
 /// gently-pitched ramp really does locally resemble a plane); too LARGE a `pitch` relative to
 /// `outerRadius - innerRadius`, on the other hand, drifts into the same unit-box-normalization
 /// aspect-ratio sensitivity documented on `triangularPrismLateralMesh`. `pitch: 20, turns: 3`
 /// (height 60 against a radius span of 3) sits well inside the correctly-classified middle.
-func helicoidStripMesh(innerRadius: Float = 2, outerRadius: Float = 5, pitch: Float = 20,
-                       turns: Float = 3, uSegments: Int = 192, vSegments: Int = 12) -> Mesh {
+func helicoidStripMesh(
+    innerRadius: Float = 2, outerRadius: Float = 5, pitch: Float = 20,
+    turns: Float = 3, uSegments: Int = 192, vSegments: Int = 12
+) -> Mesh {
     var positions: [SIMD3<Float>] = []
     for i in 0...uSegments {
         let u = Float(i) / Float(uSegments) * turns * 2 * .pi
@@ -568,8 +678,10 @@ func helicoidStripMesh(innerRadius: Float = 2, outerRadius: Float = 5, pitch: Fl
     var indices: [UInt32] = []
     for i in 0..<uSegments {
         for j in 0..<vSegments {
-            let a = UInt32(i * cols + j), b = UInt32(i * cols + j + 1)
-            let c = UInt32((i + 1) * cols + j), d = UInt32((i + 1) * cols + j + 1)
+            let a = UInt32(i * cols + j)
+            let b = UInt32(i * cols + j + 1)
+            let c = UInt32((i + 1) * cols + j)
+            let d = UInt32((i + 1) * cols + j + 1)
             indices.append(contentsOf: [a, b, d, a, d, c])
         }
     }
@@ -577,22 +689,26 @@ func helicoidStripMesh(innerRadius: Float = 2, outerRadius: Float = 5, pitch: Fl
 }
 
 /// A spherical dome (a polar cap, NOT a full sphere) centered at an arbitrary, off-origin
-/// `center` — the partial-sphere zone a real segmentation region actually looks like (e.g. a
-/// scanned dome/boss), as opposed to `sphereMesh()`'s full, origin-centered sphere. Welded by
-/// construction (shared ring vertices, apex shared by the top fan).
+/// `center`: the partial-sphere zone a real segmentation region actually looks like (e.g. a
+/// scanned dome/boss), as opposed to the full, origin-centered sphere of `sphereMesh()`.
+///
+/// Welded by construction (shared ring vertices, apex shared by the top fan).
 ///
 /// Its own quad band uses the same `[a, b, d, a, d, c]` diagonal idiom `sphereMesh()` used to
-/// (before that one was fixed for issue #27/#30 — see its doc comment) and winds inward as a
-/// result — left AS IS here, deliberately: `WindingNumberTests.openDomeInversionIsDetected` uses
+/// (before that one was fixed for issue #27/#30, see its doc comment) and winds inward as a
+/// result; left AS IS here, deliberately: `WindingNumberTests.openDomeInversionIsDetected` uses
 /// this fixture directly as the "inverted" case (and `reversedWinding(_:)` as the correct one)
 /// rather than fixing it too.
-func domeMesh(center: SIMD3<Float> = SIMD3(30, -10, 5), radius: Float = 5, capAngleDegrees: Float = 50,
-             latSegments: Int = 24, lonSegments: Int = 36) -> Mesh {
+func domeMesh(
+    center: SIMD3<Float> = SIMD3(30, -10, 5), radius: Float = 5, capAngleDegrees: Float = 50,
+    latSegments: Int = 24, lonSegments: Int = 36
+) -> Mesh {
     var positions: [SIMD3<Float>] = []
     let capAngle = capAngleDegrees * .pi / 180
     for i in 0...latSegments {
         let theta = Float(i) / Float(latSegments) * capAngle
-        let z = radius * cos(theta), r = radius * sin(theta)
+        let z = radius * cos(theta)
+        let r = radius * sin(theta)
         for j in 0..<lonSegments {
             let phi = Float(j) / Float(lonSegments) * 2 * .pi
             positions.append(center + SIMD3(r * cos(phi), r * sin(phi), z))
@@ -601,8 +717,10 @@ func domeMesh(center: SIMD3<Float> = SIMD3(30, -10, 5), radius: Float = 5, capAn
     var indices: [UInt32] = []
     for i in 0..<latSegments {
         for j in 0..<lonSegments {
-            let a = UInt32(i * lonSegments + j), b = UInt32(i * lonSegments + (j + 1) % lonSegments)
-            let c = UInt32((i + 1) * lonSegments + j), d = UInt32((i + 1) * lonSegments + (j + 1) % lonSegments)
+            let a = UInt32(i * lonSegments + j)
+            let b = UInt32(i * lonSegments + (j + 1) % lonSegments)
+            let c = UInt32((i + 1) * lonSegments + j)
+            let d = UInt32((i + 1) * lonSegments + (j + 1) % lonSegments)
             indices.append(contentsOf: [a, b, d, a, d, c])
         }
     }
@@ -617,7 +735,7 @@ func transformedMesh(_ mesh: Mesh, by transform: simd_double4x4) -> Mesh {
     return Mesh(vertices: newPositions, indices: mesh.indices)!
 }
 
-/// Reverses every triangle's winding (swaps its last two indices) — flips every face normal
+/// Reverses every triangle's winding (swaps its last two indices); flips every face normal
 /// without moving a single vertex. Used to exercise `Mesh.windingNumber`/`orientationReport`'s
 /// documented linearity-in-orientation behavior against a known-good fixture.
 func reversedWinding(_ mesh: Mesh) -> Mesh {
@@ -632,13 +750,16 @@ func reversedWinding(_ mesh: Mesh) -> Mesh {
 
 /// A flat square plate (`size × size` grid vertices, `spacing` apart, `z = 0`) with a raised
 /// rectangular "mesa" in its interior (`z = height` over `[innerLo, innerHi]` in both grid
-/// indices) — the one-cell-wide transition band between the two flat levels is a steep,
+/// indices): the one-cell-wide transition band between the two flat levels is a steep,
 /// tilted collar whose triangles fold sharply against BOTH the base and the top, forming two
-/// nested closed crease rings under `Mesh.creaseEdges`' default 30° threshold: the outer
-/// base/collar boundary and the inner collar/top boundary. Welded by construction (shared grid
-/// vertices) — `Mesh.creaseEdges`' precondition.
-func plateauMesh(size: Int = 9, spacing: Float = 1, innerLo: Int = 3, innerHi: Int = 5,
-                 height: Float = 5) -> Mesh {
+/// nested closed crease rings under the default 30° threshold of `Mesh.creaseEdges`: the outer
+/// base/collar boundary and the inner collar/top boundary.
+///
+/// Welded by construction (shared grid vertices): the precondition of `Mesh.creaseEdges`.
+func plateauMesh(
+    size: Int = 9, spacing: Float = 1, innerLo: Int = 3, innerHi: Int = 5,
+    height: Float = 5
+) -> Mesh {
     func vertexIndex(_ i: Int, _ j: Int) -> UInt32 { UInt32(j * size + i) }
     var positions: [SIMD3<Float>] = []
     for j in 0..<size {
@@ -650,8 +771,10 @@ func plateauMesh(size: Int = 9, spacing: Float = 1, innerLo: Int = 3, innerHi: I
     var indices: [UInt32] = []
     for j in 0..<(size - 1) {
         for i in 0..<(size - 1) {
-            let a = vertexIndex(i, j), b = vertexIndex(i + 1, j)
-            let c = vertexIndex(i, j + 1), d = vertexIndex(i + 1, j + 1)
+            let a = vertexIndex(i, j)
+            let b = vertexIndex(i + 1, j)
+            let c = vertexIndex(i, j + 1)
+            let d = vertexIndex(i + 1, j + 1)
             indices.append(contentsOf: [a, b, d, a, d, c])
         }
     }
@@ -659,9 +782,13 @@ func plateauMesh(size: Int = 9, spacing: Float = 1, innerLo: Int = 3, innerHi: I
 }
 
 /// The same raised mesa as `plateauMesh`, but the raised region's index range extends all the
-/// way to the plate's own edge on one side (`innerHi == size - 1`) — that side of the mesa has
+/// way to the plate's own edge on one side (`innerHi == size - 1`); that side of the mesa has
 /// no base/collar beyond it at all, so both crease rings open up into PATHS that run off the
-/// mesh's own open boundary there instead of closing into loops. Welded by construction.
-func plateauTouchingEdgeMesh(size: Int = 9, spacing: Float = 1, innerLo: Int = 3, height: Float = 5) -> Mesh {
+/// mesh's own open boundary there instead of closing into loops.
+///
+/// Welded by construction.
+func plateauTouchingEdgeMesh(size: Int = 9, spacing: Float = 1, innerLo: Int = 3, height: Float = 5)
+    -> Mesh
+{
     plateauMesh(size: size, spacing: spacing, innerLo: innerLo, innerHi: size - 1, height: height)
 }

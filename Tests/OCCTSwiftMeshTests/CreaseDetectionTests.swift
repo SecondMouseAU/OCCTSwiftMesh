@@ -1,12 +1,15 @@
+import OCCTSwift
 import Testing
 import simd
-import OCCTSwift
+
 @testable import OCCTSwiftMesh
 
-@Suite("Mesh.creaseEdges — dihedral-fold edge detection and ring/path chaining")
+@Suite("Mesh.creaseEdges, dihedral-fold edge detection and ring/path chaining")
 struct CreaseDetectionTests {
 
-    @Test("A capped cylinder's smooth (below-threshold) barrel forms exactly two 90° closed crease rings — the cap/barrel seams")
+    @Test(
+        "A capped cylinder's smooth (below-threshold) barrel forms exactly two 90° closed crease rings: the cap/barrel seams"
+    )
     func cappedCylinderFormsTwoClosedRings() {
         // 48 sides → 7.5° barrel-facet dihedral, safely under the default 30° threshold (the
         // barrel itself never creases); cap-to-barrel is a clean 90° step all the way around,
@@ -45,10 +48,10 @@ struct CreaseDetectionTests {
         for ring in result.rings { #expect(!ring.closed) }
     }
 
-    @Test("A welded box's 8 corners are junctions — 12 single-edge open paths, no closed rings")
+    @Test("A welded box's 8 corners are junctions, 12 single-edge open paths, no closed rings")
     func boxCornersAreJunctionsNotWandered() {
         // Every real cube edge is a 90° fold between two adjacent faces, and every cube corner
-        // is where 3 such creases meet (a junction) — since a box edge isn't subdivided, each of
+        // is where 3 such creases meet (a junction); since a box edge isn't subdivided, each of
         // the 12 edges is itself a direct junction-to-junction path with no degree-2 vertex
         // in between, exercising the "never wander through a junction" discipline directly.
         let result = weldedUnitCube().creaseEdges()
@@ -68,7 +71,7 @@ struct CreaseDetectionTests {
         #expect(result.unchainedCreaseEdgeCount == 0)
     }
 
-    @Test("Unwelded input finds no creases — documents the weld precondition")
+    @Test("Unwelded input finds no creases, documents the weld precondition")
     func unweldedInputFindsNoCreases() {
         let result = unwelded(plateauMesh()).creaseEdges()
         #expect(result.rings.isEmpty)

@@ -1,36 +1,47 @@
-// Mesh+Welding.swift — merge coincident vertices so adjacency-based algorithms have a
+// Mesh+Welding.swift: merge coincident vertices so adjacency-based algorithms have a
 // shared substrate to work on.
 //
 // OCCT tessellation and STL loading both produce (near-)unshared vertices in practice: three
 // unique positions per triangle, even where triangles are geometrically edge-adjacent. Every
 // adjacency-based primitive in this package (triangleAdjacency, connectedComponents,
-// boundaryLoops, segmented) needs a WELDED mesh to see that adjacency at all — on unwelded
+// boundaryLoops, segmented) needs a WELDED mesh to see that adjacency at all; on unwelded
 // input, no two triangles share a vertex index, so each looks isolated. Weld first.
 
-import simd
 import OCCTSwift
+import simd
 
 extension Mesh {
     /// Snap each vertex to a spatial grid cell and merge every vertex landing in the same
-    /// cell, keeping the first-encountered position as that cell's representative. Returns
-    /// the per-original-vertex remap (into the deduplicated `positions`) alongside the
+    /// cell, keeping the first-encountered position as that cell's representative.
+    ///
+    /// Returns the per-original-vertex remap (into the deduplicated `positions`) alongside the
     /// deduplicated positions themselves. Internal building block shared by `welded(tolerance:)`
     /// and every algorithm that needs welded topology without discarding the caller's own
     /// triangle indexing (weld positions, keep indices/order intact).
-    static func weldPositions(_ vertices: [SIMD3<Float>], tolerance: Double) -> (remap: [UInt32], positions: [SIMD3<Float>]) {
+    static func weldPositions(_ vertices: [SIMD3<Float>], tolerance: Double) -> (
+        remap: [UInt32], positions: [SIMD3<Float>]
+    ) {
         guard !vertices.isEmpty else { return ([], []) }
-        var lo = vertices[0], hi = vertices[0]
-        for p in vertices { lo = simd_min(lo, p); hi = simd_max(hi, p) }
+        var lo = vertices[0]
+        var hi = vertices[0]
+        for p in vertices {
+            lo = simd_min(lo, p)
+            hi = simd_max(hi, p)
+        }
         let diag = Double(simd_length(hi - lo))
         // Same auto-derivation as crossSection's weld default: tiny relative to the model,
         // far below any real wall thickness, so distinct points stay distinct.
         let cell = tolerance > 0 ? tolerance : max(1e-9, 1e-6 * diag)
 
-        struct GridKey: Hashable { var x: Int64; var y: Int64; var z: Int64 }
+        struct GridKey: Hashable {
+            var x: Int64
+            var y: Int64
+            var z: Int64
+        }
         // Clamped so a huge coordinate over a tiny cell (e.g. every vertex coincident, so
         // `diag == 0` and `cell` floors to `1e-9`, combined with coordinates of order 1e10+)
         // can't overflow the Double → Int64 conversion and trap. Values only ever meet at this
-        // boundary for coordinate magnitudes many orders beyond any plausible model — safe.
+        // boundary for coordinate magnitudes many orders beyond any plausible model; safe.
         func gridCoord(_ x: Float, _ cell: Double) -> Int64 {
             let d = (Double(x) / cell).rounded()
             guard d.isFinite else { return 0 }
@@ -42,7 +53,8 @@ extension Mesh {
         positions.reserveCapacity(vertices.count)
         for i in vertices.indices {
             let p = vertices[i]
-            let key = GridKey(x: gridCoord(p.x, cell), y: gridCoord(p.y, cell), z: gridCoord(p.z, cell))
+            let key = GridKey(
+                x: gridCoord(p.x, cell), y: gridCoord(p.y, cell), z: gridCoord(p.z, cell))
             if let existing = cellToIndex[key] {
                 remap[i] = existing
             } else {
@@ -73,10 +85,14 @@ extension Mesh {
         newIndices.reserveCapacity(idx.count)
         var tri = 0
         while tri + 2 < idx.count {
-            let a = remap[Int(idx[tri])], b = remap[Int(idx[tri + 1])], c = remap[Int(idx[tri + 2])]
+            let a = remap[Int(idx[tri])]
+            let b = remap[Int(idx[tri + 1])]
+            let c = remap[Int(idx[tri + 2])]
             tri += 3
             guard a != b, b != c, a != c else { continue }
-            newIndices.append(a); newIndices.append(b); newIndices.append(c)
+            newIndices.append(a)
+            newIndices.append(b)
+            newIndices.append(c)
         }
         guard let out = Mesh(vertices: positions, indices: newIndices) else { return self }
         return out

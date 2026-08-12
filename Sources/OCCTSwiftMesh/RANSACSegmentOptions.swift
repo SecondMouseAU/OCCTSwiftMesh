@@ -1,4 +1,4 @@
-// RANSACSegmentOptions — input parameters for Mesh.segmentedRANSAC(_:).
+// RANSACSegmentOptions; input parameters for Mesh.segmentedRANSAC(_:).
 
 import OCCTSwift
 
@@ -15,25 +15,27 @@ import OCCTSwift
 extension Mesh {
     public struct RANSACSegmentOptions: Sendable {
         /// Maximum point-to-primitive distance for a triangle to count as an inlier of a
-        /// candidate primitive, in the mesh's own units (an ABSOLUTE distance — Schnabel's own
+        /// candidate primitive, in the mesh's own units (an ABSOLUTE distance, Schnabel's own
         /// convention prefers this over a bounding-box-relative fraction at the API surface,
         /// unlike `SegmentOptions.mergeRelativeTolerance`). `0` (default) auto-derives
         /// `0.005 ×` the mesh's bounding-box diagonal.
         public var inlierEpsilon: Double
 
         /// Spatial proximity radius used to split one candidate's GLOBAL inlier set (which can
-        /// span disconnected patches — see the file header) into separate connected clusters,
+        /// span disconnected patches: see the file header) into separate connected clusters,
         /// filtering out inliers that only satisfy the tolerance/normal gates by coincidence
         /// rather than belonging to the same physical feature. `0` (default) auto-derives
         /// `2 ×` the mesh's own mean edge length.
         public var clusterEpsilon: Double
 
         /// A candidate triangle's face normal must be within this many degrees of the fitted
-        /// primitive's own surface normal at that triangle's centroid — OR of that normal's
-        /// exact opposite — to count as an inlier. The check is orientation-agnostic
+        /// primitive's own surface normal at that triangle's centroid; OR of that normal's
+        /// exact opposite; to count as an inlier.
+        ///
+        /// The check is orientation-agnostic
         /// (`|cos deviation|`, not signed) on purpose: a triangle with inconsistent or unknown
         /// winding still lies tangent to the fitted surface, and real scan meshes routinely have
-        /// inconsistent/unknown global winding — the same reason `windingNumber`/
+        /// inconsistent/unknown global winding: the same reason `windingNumber`/
         /// `orientationReport` (issue #30) exist at all. Only the tangent-plane alignment is
         /// gated here, never which way the normal happens to point.
         public var maxNormalDeviationDegrees: Float
@@ -44,21 +46,25 @@ extension Mesh {
         public var minSupportCount: Int
 
         /// Target probability (Schnabel's convention) of not having missed the best candidate
-        /// primitive each round — drives the adaptive per-round candidate-trial budget: as a
+        /// primitive each round; drives the adaptive per-round candidate-trial budget: as a
         /// round's best-found support grows, fewer further trials are needed to be this confident
-        /// nothing larger remains undiscovered. Higher costs more candidate evaluations.
+        /// nothing larger remains undiscovered.
+        ///
+        /// Higher costs more candidate evaluations.
         public var successProbability: Double
 
-        /// Hard cap on candidate primitives evaluated per round, regardless of
-        /// `successProbability`'s adaptive estimate — bounds worst-case cost on a large mesh.
+        /// Hard cap on candidate primitives evaluated per round, regardless of the adaptive
+        /// estimate driven by `successProbability`; bounds worst-case cost on a large mesh.
         public var maxCandidatesPerRound: Int
 
         /// Triangle count of each deterministic candidate sample fed to `PrimitiveFitter.bestFit`
-        /// (see the file header's "candidate generation" note — a small least-squares sample
+        /// (see the file header's "candidate generation" note, a small least-squares sample
         /// rather than Schnabel's exact closed-form minimal set per primitive type).
         public var sampleSize: Int
 
-        /// Cap on the number of regions returned. When set and exceeded, the largest `maxRegions`
+        /// Cap on the number of regions returned.
+        ///
+        /// When set and exceeded, the largest `maxRegions`
         /// regions (by area) are kept and the rest counted in `SegmentedMesh.truncatedTriangleCount`.
         public var maxRegions: Int?
 

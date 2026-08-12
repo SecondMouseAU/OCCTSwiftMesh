@@ -1,9 +1,10 @@
-import Testing
-import OCCTSwift
 import OCCTMeshOptimizer
+import OCCTSwift
+import Testing
+
 @testable import OCCTSwiftMesh
 
-@Suite("OCCTSwiftMesh — package")
+@Suite("OCCTSwiftMesh, package")
 struct PackageTests {
     @Test("Module exposes its version sentinel")
     func versionSentinel() {
@@ -29,7 +30,7 @@ private func makeSphereMesh(radius: Double = 1.0, deflection: Double = 0.05) thr
 
 // MARK: - Validation
 
-@Suite("Mesh.simplified — input validation rejects nil")
+@Suite("Mesh.simplified, input validation rejects nil")
 struct ValidationTests {
     @Test("nil when neither targetTriangleCount nor targetReduction is set")
     func neitherTargetSet() throws {
@@ -75,7 +76,7 @@ struct ValidationTests {
 
 // MARK: - Bridge end-to-end
 
-@Suite("Mesh.simplified — bridge produces a decimated mesh")
+@Suite("Mesh.simplified, bridge produces a decimated mesh")
 struct DecimateRawTests {
     @Test("targetReduction reduces triangle count and stays below the input bound")
     func targetReductionReducesCount() throws {
@@ -156,7 +157,9 @@ struct ScaleTests {
         let mesh = try makeSphereMesh()
         let raw = mesh.vertexData
         let count = UInt32(mesh.vertexCount)
-        let scale: Float = raw.withUnsafeBufferPointer { OCCTMeshSimplifyScale($0.baseAddress, count) }
+        let scale: Float = raw.withUnsafeBufferPointer {
+            OCCTMeshSimplifyScale($0.baseAddress, count)
+        }
         #expect(scale > 0)
         #expect(scale.isFinite)
     }
@@ -164,7 +167,7 @@ struct ScaleTests {
 
 // MARK: - Public API integration
 
-@Suite("Mesh.simplified — public API")
+@Suite("Mesh.simplified, public API")
 struct PublicAPITests {
     @Test("Returns a SimplifiedMesh whose counts match the raw bridge output")
     func returnsSimplifiedMesh() throws {

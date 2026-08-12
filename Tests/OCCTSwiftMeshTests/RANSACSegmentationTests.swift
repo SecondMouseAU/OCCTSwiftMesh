@@ -1,17 +1,18 @@
+import OCCTSwift
 import Testing
 import simd
-import OCCTSwift
+
 @testable import OCCTSwiftMesh
 
-@Suite("Mesh.segmentedRANSAC — Schnabel-style RANSAC primitive extraction")
+@Suite("Mesh.segmentedRANSAC, Schnabel-style RANSAC primitive extraction")
 struct RANSACSegmentationTests {
 
     @Test("A flat box face set finds plane regions covering the whole box")
     func boxFindsPlanes() {
         let mesh = weldedUnitCube()
         var options = Mesh.RANSACSegmentOptions()
-        options.minSupportCount = 2   // each box face is only 2 triangles
-        options.sampleSize = 2        // matches a single face's triangle count exactly
+        options.minSupportCount = 2  // each box face is only 2 triangles
+        options.sampleSize = 2  // matches a single face's triangle count exactly
         let result = mesh.segmentedRANSAC(options)
         #expect(!result.regions.isEmpty)
         for fit in result.fits { #expect(fit.kind == .plane) }
@@ -23,7 +24,7 @@ struct RANSACSegmentationTests {
     func sphereIsRecovered() {
         // A fine-enough tessellation that the discretization sagitta (a coarse UV sphere's
         // face-centroid distance below its own true analytic surface) stays comfortably under
-        // the default auto-derived inlierEpsilon (~0.005 × bbox diagonal) — otherwise even a
+        // the default auto-derived inlierEpsilon (~0.005 × bbox diagonal); otherwise even a
         // perfect sphere fit legitimately fails the distance gate on much of a coarse mesh's own
         // triangles, fragmenting across rounds for a reason that's about tessellation coarseness
         // vs. tolerance, not a segmentation defect.
@@ -36,7 +37,9 @@ struct RANSACSegmentationTests {
         }
         // The dominant sphere region should cover the large majority of the mesh.
         let bestArea = result.regions.map(\.area).max() ?? 0
-        let totalArea = Mesh.area(ofTriangles: Array(0..<mesh.triangleCount), vertices: mesh.vertices, indices: mesh.indices)
+        let totalArea = Mesh.area(
+            ofTriangles: Array(0..<mesh.triangleCount), vertices: mesh.vertices,
+            indices: mesh.indices)
         #expect(bestArea / totalArea > 0.7)
     }
 
@@ -55,7 +58,7 @@ struct RANSACSegmentationTests {
     func minSupportCountReportsLeftovers() {
         let mesh = weldedUnitCube()
         var options = Mesh.RANSACSegmentOptions()
-        options.minSupportCount = 1000   // impossibly high for a 12-triangle box
+        options.minSupportCount = 1000  // impossibly high for a 12-triangle box
         let result = mesh.segmentedRANSAC(options)
         #expect(result.regions.isEmpty)
         #expect(result.truncatedTriangleCount == mesh.triangleCount)
@@ -94,7 +97,7 @@ struct RANSACSegmentationTests {
     }
 }
 
-@Suite("Mesh.segmentedAutoSelect — dihedral vs. RANSAC bake-off")
+@Suite("Mesh.segmentedAutoSelect, dihedral vs. RANSAC bake-off")
 struct SegmentationAutoSelectTests {
 
     @Test("A single integrated part (a box) picks the dihedral strategy")
@@ -103,7 +106,9 @@ struct SegmentationAutoSelectTests {
         let auto = mesh.segmentedAutoSelect()
         #expect(auto.strategy == .dihedral)
         #expect(auto.dihedralScore >= auto.ransacScore)
-        #expect(auto.result.regions.map(\.triangleIndices) == mesh.segmented().regions.map(\.triangleIndices))
+        #expect(
+            auto.result.regions.map(\.triangleIndices)
+                == mesh.segmented().regions.map(\.triangleIndices))
     }
 
     @Test("The winning result matches calling that strategy directly")
@@ -112,9 +117,13 @@ struct SegmentationAutoSelectTests {
         let auto = mesh.segmentedAutoSelect()
         switch auto.strategy {
         case .dihedral:
-            #expect(auto.result.regions.map(\.triangleIndices) == mesh.segmented().regions.map(\.triangleIndices))
+            #expect(
+                auto.result.regions.map(\.triangleIndices)
+                    == mesh.segmented().regions.map(\.triangleIndices))
         case .ransac:
-            #expect(auto.result.regions.map(\.triangleIndices) == mesh.segmentedRANSAC().regions.map(\.triangleIndices))
+            #expect(
+                auto.result.regions.map(\.triangleIndices)
+                    == mesh.segmentedRANSAC().regions.map(\.triangleIndices))
         }
     }
 

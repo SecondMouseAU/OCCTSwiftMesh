@@ -1,9 +1,10 @@
+import OCCTSwift
 import Testing
 import simd
-import OCCTSwift
+
 @testable import OCCTSwiftMesh
 
-@Suite("Mesh.vertexCurvatures — discrete curvature estimation")
+@Suite("Mesh.vertexCurvatures, discrete curvature estimation")
 struct MeshCurvatureTests {
 
     @Test("Flat grid: zero curvature everywhere, including boundary vertices")
@@ -24,14 +25,15 @@ struct MeshCurvatureTests {
         let radius: Float = 10
         let rings = 10
         let segments = 24
-        let mesh = sphereZoneMesh(radius: radius, latitudeSpanDegrees: 60, segments: segments, rings: rings)
+        let mesh = sphereZoneMesh(
+            radius: radius, latitudeSpanDegrees: 60, segments: segments, rings: rings)
         let curvatures = mesh.vertexCurvatures()
         let expected = 1.0 / Double(radius)
 
         // Interior rings only, excluding a 2-ring buffer from the top/bottom open boundary: the
         // boundary rings themselves have an incomplete triangle fan (less accurate vertex
         // normals), and that inaccuracy propagates one ring further inward through the shared
-        // faces used to fit THOSE vertices' neighbors — verified empirically (rings 0/1 and
+        // faces used to fit THOSE vertices' neighbors; verified empirically (rings 0/1 and
         // 8/9 of this 10-ring mesh show a several-% bias; rings 2-7 converge to <0.1%).
         for ring in 2..<(rings - 2) {
             for i in 0..<segments {
@@ -48,7 +50,8 @@ struct MeshCurvatureTests {
         let radius: Float = 6
         let rings = 8
         let segments = 24
-        let mesh = openCylinderMultiRingMesh(radius: radius, height: 20, segments: segments, rings: rings)
+        let mesh = openCylinderMultiRingMesh(
+            radius: radius, height: 20, segments: segments, rings: rings)
         let curvatures = mesh.vertexCurvatures()
         let expected = 1.0 / Double(radius)
         let axis = SIMD3<Double>(0, 0, 1)
@@ -68,7 +71,7 @@ struct MeshCurvatureTests {
         }
     }
 
-    @Test("Unwelded input reports zero curvature everywhere — documents the weld precondition")
+    @Test("Unwelded input reports zero curvature everywhere, documents the weld precondition")
     func unweldedInputIsZeroCurvature() {
         let mesh = unwelded(sphereZoneMesh())
         let curvatures = mesh.vertexCurvatures()
@@ -79,7 +82,9 @@ struct MeshCurvatureTests {
         }
     }
 
-    @Test("A sliver triangle glued onto an edge doesn't propagate NaN, and leaves every vertex's curvature unchanged")
+    @Test(
+        "A sliver triangle glued onto an edge doesn't propagate NaN, and leaves every vertex's curvature unchanged"
+    )
     func sliverTriangleIsExcludedNotPropagated() {
         let base = sphereZoneMesh()
         let contaminated = sphereZoneMeshWithSliver()
@@ -94,10 +99,10 @@ struct MeshCurvatureTests {
             #expect(c.d2.x.isFinite && c.d2.y.isFinite && c.d2.z.isFinite)
         }
         // The sliver's own two shared corners (0, 1) and every untouched vertex are numerically
-        // unaffected — the sliver's contribution is excluded from the curvature FIT entirely
+        // unaffected: the sliver's contribution is excluded from the curvature FIT entirely
         // (guard on area/aspect), not merely down-weighted. (Not bit-identical: appending the
         // sliver triangle also changes which face is "last" to set corners 0/1's arbitrary
-        // initial tangent-frame pick — see the file header — a different but equally valid
+        // initial tangent-frame pick: see the file header: a different but equally valid
         // orthonormal basis, so the accumulation happens in a different order and picks up
         // ~1e-6-level floating-point noise, even though the underlying tensor contributions
         // summed are identical.)

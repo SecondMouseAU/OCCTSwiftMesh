@@ -1,9 +1,10 @@
+import OCCTSwift
 import Testing
 import simd
-import OCCTSwift
+
 @testable import OCCTSwiftMesh
 
-@Suite("Mesh.segmented — dihedral region-growing + primitive-fit merge")
+@Suite("Mesh.segmented, dihedral region-growing + primitive-fit merge")
 struct SegmentationTests {
 
     @Test("A box segments into 6 unmerged planar regions")
@@ -16,18 +17,20 @@ struct SegmentationTests {
             #expect(fit.kind == .plane)
             #expect(fit.residualRMS < 1e-5)
         }
-        // Box faces meet at 90°, well outside maxMergeAngleDegrees (50°) — must NOT fuse.
+        // Box faces meet at 90°, well outside maxMergeAngleDegrees (50°); must NOT fuse.
         for region in result.regions { #expect(region.triangleIndices.count == 2) }
     }
 
-    @Test("Unwelded box still segments into 6 regions — weld precondition is handled internally")
+    @Test("Unwelded box still segments into 6 regions, weld precondition is handled internally")
     func unweldedBoxStillSegments() {
         let result = unweldedUnitCube().segmented()
         #expect(result.regions.count == 6)
         for region in result.regions { #expect(region.triangleIndices.count == 2) }
     }
 
-    @Test("Unwelded curved body still merges its shattered barrel — internal weld path holds beyond the box case")
+    @Test(
+        "Unwelded curved body still merges its shattered barrel; internal weld path holds beyond the box case"
+    )
     func unweldedCurvedBodyStillSegments() {
         let mesh = unwelded(coarseCappedCylinderMesh(radius: 4, sides: 12, rings: 5, height: 4))
         let result = mesh.segmented()
@@ -42,13 +45,14 @@ struct SegmentationTests {
     func coarseCylinderMergesToBarrelPlusCaps() {
         let mesh = coarseCappedCylinderMesh(radius: 4, sides: 12, rings: 5, height: 4)
 
-        // Sanity: smooth region-growing alone shatters the coarse barrel — adjacent facets are
+        // Sanity: smooth region-growing alone shatters the coarse barrel; adjacent facets are
         // 30° apart, past the 20° default dihedral threshold, so each becomes its own region
         // before the merge pass runs.
         let normals = mesh.faceNormals()
         let adjacency = mesh.triangleAdjacency()
-        let seeded = Mesh.segmentSmoothRegions(triangleCount: mesh.triangleCount, normals: normals,
-                                               adjacency: adjacency, maxDihedralDegrees: 20)
+        let seeded = Mesh.segmentSmoothRegions(
+            triangleCount: mesh.triangleCount, normals: normals,
+            adjacency: adjacency, maxDihedralDegrees: 20)
         // 12 vertical barrel strips (each internally coplanar top-to-bottom) + 2 flat cap fans.
         #expect(seeded.count == 14)
 
@@ -66,7 +70,7 @@ struct SegmentationTests {
     @Test("An open cylindrical shell (no caps) merges into a single cylinder region")
     func openShellSegmentsToOneCylinder() {
         // The "open half-cylinder shell" case from the tracking issue: an uncapped barrel, only
-        // the round wall — coarse enough (12 sides, 30° apart) to shatter under the default 20°
+        // the round wall; coarse enough (12 sides, 30° apart) to shatter under the default 20°
         // dihedral threshold, with nothing else present for the merge to confuse it with.
         let mesh = openCylinderShellMesh(radius: 4, height: 4, segments: 12)
         let result = mesh.segmented()
@@ -95,7 +99,7 @@ struct SegmentationTests {
         options.maxRegions = 3
         let result = weldedUnitCube().segmented(options)
         #expect(result.regions.count == 3)
-        #expect(result.truncatedTriangleCount == 6)   // 3 dropped regions × 2 triangles each
+        #expect(result.truncatedTriangleCount == 6)  // 3 dropped regions × 2 triangles each
     }
 
     @Test("A negative maxRegions is treated as zero rather than crashing")
@@ -111,7 +115,7 @@ struct SegmentationTests {
     @Test("minRegionTriangles drops undersized regions and reports them as truncated")
     func minRegionTrianglesFiltersAndReports() {
         var options = Mesh.SegmentOptions()
-        options.minRegionTriangles = 3   // every box region has only 2 triangles
+        options.minRegionTriangles = 3  // every box region has only 2 triangles
         let result = weldedUnitCube().segmented(options)
         #expect(result.regions.isEmpty)
         #expect(result.fits.isEmpty)
@@ -124,10 +128,12 @@ struct SegmentationTests {
     }
 }
 
-@Suite("SegmentOptions.curvatureSeeding — seed-relative growing (issue #29)")
+@Suite("SegmentOptions.curvatureSeeding, seed-relative growing (issue #29)")
 struct CurvatureSeedingTests {
 
-    @Test("Default (curvatureSeeding: false) is the original pairwise rule — unaffected by seedOrder/seedRelative defaults")
+    @Test(
+        "Default (curvatureSeeding: false) is the original pairwise rule; unaffected by seedOrder/seedRelative defaults"
+    )
     func defaultIsUnchanged() {
         let mesh = coarseCappedCylinderMesh()
         #expect(!Mesh.SegmentOptions().curvatureSeeding)
@@ -136,16 +142,18 @@ struct CurvatureSeedingTests {
         #expect(a.regions.map(\.triangleIndices) == b.regions.map(\.triangleIndices))
     }
 
-    @Test("Pairwise growing tolerates a smooth cylinder wall's gradual curvature drift as ONE region")
+    @Test(
+        "Pairwise growing tolerates a smooth cylinder wall's gradual curvature drift as ONE region")
     func pairwiseGrowingToleratesGradualDrift() {
         // 36 facets around the circumference = 10° dihedral per step, comfortably under the
-        // default 20° maxDihedralDegrees threshold — pure pairwise growing walks the WHOLE
+        // default 20° maxDihedralDegrees threshold; pure pairwise growing walks the WHOLE
         // 360° wall as one connected smooth-edge component.
         let mesh = openCylinderShellMesh(radius: 4, height: 4, segments: 36)
         let normals = mesh.faceNormals()
         let adjacency = mesh.triangleAdjacency()
-        let seeds = Mesh.segmentSmoothRegions(triangleCount: mesh.triangleCount, normals: normals,
-                                              adjacency: adjacency, maxDihedralDegrees: 20)
+        let seeds = Mesh.segmentSmoothRegions(
+            triangleCount: mesh.triangleCount, normals: normals,
+            adjacency: adjacency, maxDihedralDegrees: 20)
         #expect(seeds.count == 1)
     }
 
@@ -153,12 +161,13 @@ struct CurvatureSeedingTests {
     func seedRelativeGrowingFracturesGradualDrift() {
         // Same fixture as above: seed-relative growing caps each region's TOTAL angular span
         // from its own seed at maxDihedralDegrees (20°), rather than tolerating unlimited
-        // step-by-step drift — so the same 360° wall now needs several regions to cover it.
+        // step-by-step drift; so the same 360° wall now needs several regions to cover it.
         let mesh = openCylinderShellMesh(radius: 4, height: 4, segments: 36)
         let normals = mesh.faceNormals()
         let adjacency = mesh.triangleAdjacency()
-        let seeds = Mesh.segmentSmoothRegions(triangleCount: mesh.triangleCount, normals: normals,
-                                              adjacency: adjacency, maxDihedralDegrees: 20, seedRelative: true)
+        let seeds = Mesh.segmentSmoothRegions(
+            triangleCount: mesh.triangleCount, normals: normals,
+            adjacency: adjacency, maxDihedralDegrees: 20, seedRelative: true)
         #expect(seeds.count > 1)
     }
 
@@ -179,45 +188,61 @@ struct CurvatureSeedingTests {
         options.curvatureSeeding = true
         let mesh = coarseCappedCylinderMesh()
         let result = mesh.segmented(options)
-        let covered = result.regions.reduce(0) { $0 + $1.triangleIndices.count } + result.truncatedTriangleCount
+        let covered =
+            result.regions.reduce(0) { $0 + $1.triangleIndices.count }
+            + result.truncatedTriangleCount
         #expect(covered == mesh.triangleCount)
     }
 }
 
-@Suite("RegionMerging.merge — fit-merge-skipped diagnostic (issue #20 item 1)")
+@Suite("RegionMerging.merge, fit-merge-skipped diagnostic (issue #20 item 1)")
 struct FitMergeSkippedTests {
-    @Test("When even the coplanar pre-merge can't get under the cap, the fit-gated pass is skipped and reported")
+    @Test(
+        "When even the coplanar pre-merge can't get under the cap, the fit-gated pass is skipped and reported"
+    )
     func skipIsReportedWhenCapExceeded() {
         let mesh = weldedUnitCube()
         let normals = mesh.faceNormals()
         let adjacency = mesh.triangleAdjacency()
-        let seeds = Mesh.segmentSmoothRegions(triangleCount: mesh.triangleCount, normals: normals,
-                                              adjacency: adjacency, maxDihedralDegrees: 20)
-            .map { MeshRegion(triangleIndices: $0,
-                              area: Mesh.area(ofTriangles: $0, vertices: mesh.vertices, indices: mesh.indices)) }
-        // 6 box faces, 90° apart — the ~2° coplanar pre-merge can't touch them, so the region
+        let seeds = Mesh.segmentSmoothRegions(
+            triangleCount: mesh.triangleCount, normals: normals,
+            adjacency: adjacency, maxDihedralDegrees: 20
+        )
+        .map {
+            MeshRegion(
+                triangleIndices: $0,
+                area: Mesh.area(ofTriangles: $0, vertices: mesh.vertices, indices: mesh.indices))
+        }
+        // 6 box faces, 90° apart: the ~2° coplanar pre-merge can't touch them, so the region
         // count stays at 6, above the artificially tiny cap below.
         #expect(seeds.count == 6)
 
-        var lo = mesh.vertices[0], hi = mesh.vertices[0]
-        for p in mesh.vertices { lo = simd_min(lo, p); hi = simd_max(hi, p) }
+        var lo = mesh.vertices[0]
+        var hi = mesh.vertices[0]
+        for p in mesh.vertices {
+            lo = simd_min(lo, p)
+            hi = simd_max(hi, p)
+        }
         let bodyDiag = Double(simd_length(hi - lo))
 
         let (regions, fits, skipped) = RegionMerging.merge(
             vertices: mesh.vertices, indices: mesh.indices, regions: seeds, faceNormals: normals,
-            adjacency: adjacency, bodyDiag: bodyDiag, relativeTolerance: 0.004, maxMergeAngleDegrees: 50,
+            adjacency: adjacency, bodyDiag: bodyDiag, relativeTolerance: 0.004,
+            maxMergeAngleDegrees: 50,
             maxRegionsToMerge: 3)
         #expect(skipped)
-        #expect(regions.count == 6)   // unmerged seed regions — the fit-gated pass never ran
+        #expect(regions.count == 6)  // unmerged seed regions: the fit-gated pass never ran
         #expect(fits.count == 6)
     }
 
     @Test("A single region (nothing to merge) is not reported as skipped")
     func singleRegionIsNotSkipped() {
         let mesh = weldedUnitCube()
-        let region = MeshRegion(triangleIndices: Array(0..<mesh.triangleCount),
-                                area: Mesh.area(ofTriangles: Array(0..<mesh.triangleCount),
-                                                vertices: mesh.vertices, indices: mesh.indices))
+        let region = MeshRegion(
+            triangleIndices: Array(0..<mesh.triangleCount),
+            area: Mesh.area(
+                ofTriangles: Array(0..<mesh.triangleCount),
+                vertices: mesh.vertices, indices: mesh.indices))
         let normals = mesh.faceNormals()
         let adjacency = mesh.triangleAdjacency()
         let (_, _, skipped) = RegionMerging.merge(
@@ -227,16 +252,19 @@ struct FitMergeSkippedTests {
     }
 }
 
-@Suite("PrimitiveFitter.bestFit — region-local floor (issue #20 item 4)")
+@Suite("PrimitiveFitter.bestFit, region-local floor (issue #20 item 4)")
 struct PrimitiveFitterFloorTests {
     @Test("A shallow cylindrical arc classifies as a cylinder via a region-local tie-break floor")
     func shallowArcClassifiesAsCylinder() {
         let mesh = shallowCylindricalArcMesh(radius: 500, widthUnits: 200, axialUnits: 200)
         let allTriangles = Array(0..<mesh.triangleCount)
-        let region = MeshRegion(triangleIndices: allTriangles,
-                                area: Mesh.area(ofTriangles: allTriangles, vertices: mesh.vertices, indices: mesh.indices))
-        let fit = PrimitiveFitter.bestFit(vertices: mesh.vertices, indices: mesh.indices, region: region,
-                                          faceNormals: mesh.faceNormals())
+        let region = MeshRegion(
+            triangleIndices: allTriangles,
+            area: Mesh.area(
+                ofTriangles: allTriangles, vertices: mesh.vertices, indices: mesh.indices))
+        let fit = PrimitiveFitter.bestFit(
+            vertices: mesh.vertices, indices: mesh.indices, region: region,
+            faceNormals: mesh.faceNormals())
         #expect(fit.kind == .cylinder)
         if let radius = fit.radius { #expect(abs(radius - 500) < 5) }
     }
