@@ -1,8 +1,8 @@
-// Mesh+Simplify — QEM decimation via vendored meshoptimizer.
+// Mesh+Simplify; QEM decimation via vendored meshoptimizer.
 
 import Foundation
-import OCCTSwift
 import OCCTMeshOptimizer
+import OCCTSwift
 
 extension Mesh {
     /// Decimate this mesh using a quadric-error-metric edge-collapse algorithm.
@@ -24,7 +24,9 @@ extension Mesh {
     }
 
     /// Internal helper that runs validation, extracts input arrays, calls
-    /// the bridge, and returns the raw decimation output. Exposed at
+    /// the bridge, and returns the raw decimation output.
+    ///
+    /// Exposed at
     /// `internal` visibility so tests can verify the full bridge path
     /// without depending on the OCCTSwift Mesh public initializer.
     internal func _decimateRaw(_ options: Mesh.SimplifyOptions) -> RawDecimationResult? {
@@ -44,7 +46,8 @@ extension Mesh {
             targetTriangleCount = count
         } else if let ratio = options.targetReduction {
             guard ratio >= 0.0, ratio <= 1.0 else { return nil }
-            targetTriangleCount = max(1, Int((Double(inputTriangleCount) * (1.0 - ratio)).rounded()))
+            targetTriangleCount = max(
+                1, Int((Double(inputTriangleCount) * (1.0 - ratio)).rounded()))
         } else {
             return nil  // unreachable; covered by the hasCount != hasRatio guard
         }
@@ -58,7 +61,8 @@ extension Mesh {
         let targetIndexCount = UInt32(targetTriangleCount * 3)
         let indexCount = UInt32(indices.count)
         let vertexCount = UInt32(inputVertexCount)
-        let targetError = options.maxHausdorffDistance.map { Float($0) } ?? Float.greatestFiniteMagnitude
+        let targetError =
+            options.maxHausdorffDistance.map { Float($0) } ?? Float.greatestFiniteMagnitude
 
         var bridgeResult = OCCTMeshSimplifyResult()
         let ok: Bool = vertexFloats.withUnsafeBufferPointer { vbuf in
@@ -108,7 +112,9 @@ extension Mesh {
 }
 
 /// Internal value type carrying the raw output of QEM decimation before it
-/// is wrapped into an `OCCTSwift.Mesh`. Pending OCCTSwift#94, this is the
+/// is wrapped into an `OCCTSwift.Mesh`.
+///
+/// Pending OCCTSwift#94, this is the
 /// surface used by tests to verify the bridge end-to-end.
 internal struct RawDecimationResult: Sendable {
     let vertices: [SIMD3<Float>]

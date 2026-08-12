@@ -1,9 +1,10 @@
+import OCCTSwift
 import Testing
 import simd
-import OCCTSwift
+
 @testable import OCCTSwiftMesh
 
-@Suite("Mesh.aligned(to:options:) — point-to-plane ICP registration")
+@Suite("Mesh.aligned(to:options:), point-to-plane ICP registration")
 struct MeshAlignTests {
 
     @Test("Recovers a known applied rigid transform")
@@ -30,20 +31,24 @@ struct MeshAlignTests {
         }
     }
 
-    @Test("Partial overlap: converges to the correct overlap region's alignment, not a wrong plausible one")
+    @Test(
+        "Partial overlap: converges to the correct overlap region's alignment, not a wrong plausible one"
+    )
     func partialOverlapConverges() {
         // Two same-size, same-aspect-ratio (20×20) patches of the SAME underlying bumpy surface
-        // (shared world coordinates), offset in X — a genuine partial-overlap case (60% overlap,
+        // (shared world coordinates), offset in X: a genuine partial-overlap case (60% overlap,
         // not two identical meshes), with matching overall footprints so PCA pre-align's
         // principal-axis correspondence isn't itself ambiguous (a separate concern from what
         // this test targets: the trim/cap mechanism).
         // A low frequency (period ~105, far larger than the ~28-unit combined patch extent) so
-        // the surface has no repeating pattern within the test's range — a periodic surface here
+        // the surface has no repeating pattern within the test's range: a periodic surface here
         // would let ICP alias onto a wrong-but-locally-plausible phase shift, which is a fixture
         // problem (a naturally non-repeating real scan wouldn't have this ambiguity), not what
         // this test targets (the trim/cap mechanism itself).
-        let patchA = bumpyPatchMesh(xRange: 0...20, yRange: 0...20, segmentsPerUnit: 2, frequency: 0.06)
-        let patchBReference = bumpyPatchMesh(xRange: 8...28, yRange: 0...20, segmentsPerUnit: 2, frequency: 0.06)
+        let patchA = bumpyPatchMesh(
+            xRange: 0...20, yRange: 0...20, segmentsPerUnit: 2, frequency: 0.06)
+        let patchBReference = bumpyPatchMesh(
+            xRange: 8...28, yRange: 0...20, segmentsPerUnit: 2, frequency: 0.06)
 
         let rotation = Mesh.rodrigues(axis: SIMD3<Double>(0, 0, 1), angle: 0.05)
         let translation = SIMD3<Double>(1.5, -0.8, 0.4)
@@ -51,7 +56,7 @@ struct MeshAlignTests {
         let patchBSource = transformedMesh(patchBReference, by: applied)
 
         var options = Mesh.AlignOptions()
-        options.trimFraction = 0.45   // ~40% of patchB (x in [20, 28]) falls outside patchA
+        options.trimFraction = 0.45  // ~40% of patchB (x in [20, 28]) falls outside patchA
         guard let result = patchBSource.aligned(to: patchA, options: options) else {
             Issue.record("alignment returned nil")
             return
@@ -69,22 +74,25 @@ struct MeshAlignTests {
         #expect(checked > 10)
     }
 
-    @Test("Normal-space sampling guarantees a minority feature-normal direction gets representation; uniform sampling can miss it entirely")
+    @Test(
+        "Normal-space sampling guarantees a minority feature-normal direction gets representation; uniform sampling can miss it entirely"
+    )
     func normalSpaceSamplingRepresentsMinorityFeature() {
         // Off-center, off-diagonal bump placement: a centered bump sits exactly on the raster
         // path uniform even-stride sampling walks on a regular row-major grid (row·cols + col
         // aliases with the stride near the diagonal), which would let uniform sampling hit the
-        // feature by grid-aliasing coincidence rather than genuine representation — not what this
+        // feature by grid-aliasing coincidence rather than genuine representation; not what this
         // test is checking.
         let mesh = flatWithBumpMesh(bumpCenter: SIMD2(7, 29), bumpSigma: 1.5)
         let normals = mesh.vertexNormals().map { SIMD3<Double>($0) }
 
         // "Feature" vertices: those whose normal deviates meaningfully (> 10°) from the flat
-        // majority's (0, 0, 1) — a small minority by construction (a small, localized bump).
-        let featureIndices = Set(normals.indices.filter { i in
-            let z = max(-1, min(1, normals[i].z))
-            return acos(z) * 180 / .pi > 10
-        })
+        // majority's (0, 0, 1): a small minority by construction (a small, localized bump).
+        let featureIndices = Set(
+            normals.indices.filter { i in
+                let z = max(-1, min(1, normals[i].z))
+                return acos(z) * 180 / .pi > 10
+            })
         #expect(!featureIndices.isEmpty)
         #expect(Double(featureIndices.count) / Double(normals.count) < 0.05)
 
@@ -96,11 +104,14 @@ struct MeshAlignTests {
         #expect(uniformPicks.isDisjoint(with: featureIndices))
     }
 
-    @Test("End to end: normal-space sampling on the flat+feature mesh recovers an in-plane translation a flat plane alone couldn't disambiguate")
+    @Test(
+        "End to end: normal-space sampling on the flat+feature mesh recovers an in-plane translation a flat plane alone couldn't disambiguate"
+    )
     func normalSpaceSamplingEndToEndRecoversInPlaneShift() {
         let reference = flatWithBumpMesh()
         let translation = SIMD3<Double>(3, 2, 0)
-        let applied = Mesh.rigidTransform(rotation: matrix_identity_double3x3, translation: translation)
+        let applied = Mesh.rigidTransform(
+            rotation: matrix_identity_double3x3, translation: translation)
         let source = transformedMesh(reference, by: applied)
 
         var options = Mesh.AlignOptions()
@@ -119,7 +130,8 @@ struct MeshAlignTests {
     func deterministic() {
         let reference = bumpyPatchMesh(xRange: 0...20, yRange: 0...20, segmentsPerUnit: 2)
         let applied = Mesh.rigidTransform(
-            rotation: Mesh.rodrigues(axis: simd_normalize(SIMD3<Double>(0.1, 0.9, 0.3)), angle: 0.2),
+            rotation: Mesh.rodrigues(
+                axis: simd_normalize(SIMD3<Double>(0.1, 0.9, 0.3)), angle: 0.2),
             translation: SIMD3<Double>(2, 1, 1))
         let source = transformedMesh(reference, by: applied)
 

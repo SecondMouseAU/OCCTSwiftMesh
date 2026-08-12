@@ -1,11 +1,11 @@
-// MeshRegion — a named subset of a mesh's triangles.
+// MeshRegion: a named subset of a mesh's triangles.
 //
 // The common currency between connected-component splitting (Mesh.connectedComponents())
 // and surface segmentation (Mesh.segmented(_:)): both hand back regions as triangle-index
 // groups, largest-first, with a precomputed geometric area.
 
-import simd
 import OCCTSwift
+import simd
 
 /// A subset of a mesh's triangles, e.g. one connected component or one segmented surface patch.
 public struct MeshRegion: Sendable, Equatable {
@@ -20,8 +20,10 @@ public struct MeshRegion: Sendable, Equatable {
     }
 
     /// Deterministic ordering used everywhere regions are returned: more triangles first,
-    /// ties broken by lowest triangle index. Without the tie-break, equal-sized regions
-    /// built from unordered Dictionary/Set buckets would shuffle order between runs.
+    /// ties broken by lowest triangle index.
+    ///
+    /// Without the tie-break, equal-sized regions built from unordered Dictionary/Set buckets
+    /// would shuffle order between runs.
     static func order(_ a: MeshRegion, _ b: MeshRegion) -> Bool {
         if a.triangleIndices.count != b.triangleIndices.count {
             return a.triangleIndices.count > b.triangleIndices.count
@@ -32,7 +34,9 @@ public struct MeshRegion: Sendable, Equatable {
 
 extension Mesh {
     /// Sum of triangle areas for a set of triangle indices into `indices`/`vertices`.
-    static func area(ofTriangles triangleIndices: [Int], vertices: [SIMD3<Float>], indices: [UInt32]) -> Double {
+    static func area(
+        ofTriangles triangleIndices: [Int], vertices: [SIMD3<Float>], indices: [UInt32]
+    ) -> Double {
         var sum = 0.0
         for t in triangleIndices {
             let base = t * 3

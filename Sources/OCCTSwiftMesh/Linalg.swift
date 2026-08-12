@@ -1,7 +1,7 @@
-// Linalg.swift — small dense linear algebra used by primitive fitting.
+// Linalg.swift: small dense linear algebra used by primitive fitting.
 //
 // Fitting runs in Double for stability even though mesh data is Float. Internal to the
-// package — PrimitiveFitter is the only consumer.
+// package; PrimitiveFitter is the only consumer.
 
 import Foundation
 import simd
@@ -9,6 +9,7 @@ import simd
 enum Linalg {
 
     /// Eigen-decomposition of a symmetric 3×3 matrix via cyclic Jacobi rotations.
+    ///
     /// Returns eigenvalues ascending, with `vectors[k]` the unit eigenvector for `values[k]`.
     static func eigenSymmetric3(_ input: [[Double]]) -> (values: [Double], vectors: [[Double]]) {
         var a = input
@@ -18,24 +19,32 @@ enum Linalg {
         for _ in 0..<60 {
             var (p, q) = (0, 1)
             var off = abs(a[0][1])
-            for (i, j) in pairs where abs(a[i][j]) > off { off = abs(a[i][j]); p = i; q = j }
+            for (i, j) in pairs where abs(a[i][j]) > off {
+                off = abs(a[i][j])
+                p = i
+                q = j
+            }
             if off < 1e-15 { break }
 
             let phi = 0.5 * atan2(2 * a[p][q], a[q][q] - a[p][p])
-            let c = cos(phi), s = sin(phi)
+            let c = cos(phi)
+            let s = sin(phi)
 
             for k in 0..<3 {
-                let akp = a[k][p], akq = a[k][q]
+                let akp = a[k][p]
+                let akq = a[k][q]
                 a[k][p] = c * akp - s * akq
                 a[k][q] = s * akp + c * akq
             }
             for k in 0..<3 {
-                let apk = a[p][k], aqk = a[q][k]
+                let apk = a[p][k]
+                let aqk = a[q][k]
                 a[p][k] = c * apk - s * aqk
                 a[q][k] = s * apk + c * aqk
             }
             for k in 0..<3 {
-                let vkp = v[k][p], vkq = v[k][q]
+                let vkp = v[k][p]
+                let vkq = v[k][q]
                 v[k][p] = c * vkp - s * vkq
                 v[k][q] = s * vkp + c * vkq
             }
@@ -47,7 +56,9 @@ enum Linalg {
     }
 
     /// Covariance (scatter) matrix of points about their centroid, as a 3×3 symmetric matrix.
-    static func covariance(_ points: [SIMD3<Double>]) -> (matrix: [[Double]], centroid: SIMD3<Double>) {
+    static func covariance(_ points: [SIMD3<Double>]) -> (
+        matrix: [[Double]], centroid: SIMD3<Double>
+    ) {
         guard !points.isEmpty else { return ([[0, 0, 0], [0, 0, 0], [0, 0, 0]], .zero) }
         var c = SIMD3<Double>.zero
         for p in points { c += p }
@@ -55,24 +66,32 @@ enum Linalg {
         var m = [[0.0, 0, 0], [0, 0, 0], [0, 0, 0]]
         for p in points {
             let d = p - c
-            m[0][0] += d.x * d.x; m[0][1] += d.x * d.y; m[0][2] += d.x * d.z
-            m[1][1] += d.y * d.y; m[1][2] += d.y * d.z; m[2][2] += d.z * d.z
+            m[0][0] += d.x * d.x
+            m[0][1] += d.x * d.y
+            m[0][2] += d.x * d.z
+            m[1][1] += d.y * d.y
+            m[1][2] += d.y * d.z
+            m[2][2] += d.z * d.z
         }
-        m[1][0] = m[0][1]; m[2][0] = m[0][2]; m[2][1] = m[1][2]
+        m[1][0] = m[0][1]
+        m[2][0] = m[0][2]
+        m[2][1] = m[1][2]
         return (m, c)
     }
 
-    /// Solve a small linear system `Ax = b` by Gaussian elimination with partial pivoting.
+    /// Solve a small linear system `matrix·x = b` by Gaussian elimination with partial pivoting.
+    ///
     /// Returns nil if singular.
-    static func solve(_ A: [[Double]], _ b: [Double]) -> [Double]? {
+    static func solve(_ matrix: [[Double]], _ b: [Double]) -> [Double]? {
         let n = b.count
-        var m = A.map { $0 }
+        var m = matrix.map { $0 }
         var x = b
         for col in 0..<n {
             var pivot = col
             for r in (col + 1)..<n where abs(m[r][col]) > abs(m[pivot][col]) { pivot = r }
             if abs(m[pivot][col]) < 1e-15 { return nil }
-            m.swapAt(col, pivot); x.swapAt(col, pivot)
+            m.swapAt(col, pivot)
+            x.swapAt(col, pivot)
             let inv = 1.0 / m[col][col]
             for r in 0..<n where r != col {
                 let f = m[r][col] * inv
@@ -90,11 +109,12 @@ enum Linalg {
         return len > 1e-300 ? [v[0] / len, v[1] / len, v[2] / len] : [0, 0, 1]
     }
 
-    /// Eigen-decomposition of a symmetric N×N matrix via cyclic (classical) Jacobi rotations —
-    /// the same method as `eigenSymmetric3`, generalized to arbitrary size. Used by slippage
-    /// analysis's 6×6 constraint covariance ("Jacobi generalizes directly" per the algorithm's
-    /// source). Returns eigenvalues ascending, with `vectors[k]` the unit eigenvector for
-    /// `values[k]`.
+    /// Eigen-decomposition of a symmetric N×N matrix via cyclic (classical) Jacobi rotations,
+    /// the same method as `eigenSymmetric3`, generalized to arbitrary size.
+    ///
+    /// Used by slippage analysis's 6×6 constraint covariance ("Jacobi generalizes directly" per
+    /// the algorithm's source). Returns eigenvalues ascending, with `vectors[k]` the unit
+    /// eigenvector for `values[k]`.
     static func eigenSymmetric(_ input: [[Double]]) -> (values: [Double], vectors: [[Double]]) {
         let n = input.count
         var a = input
@@ -106,27 +126,36 @@ enum Linalg {
         // rotations to reduce every pair below the tolerance.
         for _ in 0..<(20 * n * n) {
             var off = 0.0
-            var p = 0, q = 1
+            var p = 0
+            var q = 1
             for i in 0..<n {
-                for j in (i + 1)..<n where abs(a[i][j]) > off { off = abs(a[i][j]); p = i; q = j }
+                for j in (i + 1)..<n where abs(a[i][j]) > off {
+                    off = abs(a[i][j])
+                    p = i
+                    q = j
+                }
             }
             if off < 1e-15 { break }
 
             let phi = 0.5 * atan2(2 * a[p][q], a[q][q] - a[p][p])
-            let c = cos(phi), s = sin(phi)
+            let c = cos(phi)
+            let s = sin(phi)
 
             for k in 0..<n {
-                let akp = a[k][p], akq = a[k][q]
+                let akp = a[k][p]
+                let akq = a[k][q]
                 a[k][p] = c * akp - s * akq
                 a[k][q] = s * akp + c * akq
             }
             for k in 0..<n {
-                let apk = a[p][k], aqk = a[q][k]
+                let apk = a[p][k]
+                let aqk = a[q][k]
                 a[p][k] = c * apk - s * aqk
                 a[q][k] = s * apk + c * aqk
             }
             for k in 0..<n {
-                let vkp = v[k][p], vkq = v[k][q]
+                let vkp = v[k][p]
+                let vkq = v[k][q]
                 v[k][p] = c * vkp - s * vkq
                 v[k][q] = s * vkp + c * vkq
             }

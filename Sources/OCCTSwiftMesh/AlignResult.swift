@@ -1,4 +1,4 @@
-// AlignResult — successful result of Mesh.aligned(to:options:).
+// AlignResult; successful result of Mesh.aligned(to:options:).
 
 import simd
 
@@ -9,9 +9,11 @@ public struct AlignResult: Sendable {
     public let transform: simd_double4x4
 
     /// Point-to-plane residual RMS at the returned transform, over the final surviving
-    /// (distance-capped) correspondence set. The cap applies; the iteration-time
-    /// `trimFraction` outlier rejection does NOT — trimming is an optimization-time device,
-    /// and reporting the untrimmed residual is the honest figure for the returned pose.
+    /// (distance-capped) correspondence set.
+    ///
+    /// The cap applies; the iteration-time
+    /// `trimFraction` outlier rejection does NOT: trimming is an optimization-time device,
+    /// and reporting the untrimmed residual is the figure for the returned pose.
     public let residualRMS: Double
 
     /// Number of ICP refinement iterations actually run (not counting the PCA pre-align step).

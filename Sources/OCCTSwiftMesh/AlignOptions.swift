@@ -1,4 +1,4 @@
-// AlignOptions — input parameters for Mesh.aligned(to:options:).
+// AlignOptions; input parameters for Mesh.aligned(to:options:).
 
 import OCCTSwift
 
@@ -21,26 +21,28 @@ extension Mesh {
         public var correspondenceDistanceCap: Double?
 
         /// After the distance cap, additionally drop the worst `trimFraction` of surviving
-        /// correspondences by point-to-plane residual each iteration (trimmed ICP) — robust to
+        /// correspondences by point-to-plane residual each iteration (trimmed ICP); robust to
         /// partial overlap between the two meshes.
         public var trimFraction: Double
 
         /// Run a PCA/bbox pre-alignment pass (centroids + principal axes, trying all 4
         /// orientation-preserving sign combinations and keeping the one with the lowest quick
-        /// correspondence residual) before the iterative refinement. Point-to-plane ICP only
-        /// converges reliably from a reasonable starting pose.
+        /// correspondence residual) before the iterative refinement.
+        ///
+        /// Point-to-plane ICP only converges reliably from a reasonable starting pose.
         public var preAlign: Bool
 
         /// Sample source points proportional to normal-direction diversity (Rusinkiewicz &
-        /// Levoy, "Efficient Variants of the ICP Algorithm", 2001) rather than uniformly. On a
-        /// mostly-flat surface with a small feature, uniform sampling lets the flat majority
+        /// Levoy, "Efficient Variants of the ICP Algorithm", 2001) rather than uniformly.
+        ///
+        /// On a mostly-flat surface with a small feature, uniform sampling lets the flat majority
         /// dominate the correspondence set and the feature "slide" underneath noise; normal-space
-        /// sampling gives every distinct normal direction — including the feature's rare one —
+        /// sampling gives every distinct normal direction, including the feature's rare one,
         /// comparable representation regardless of how many points share it.
         public var normalSpaceSampling: Bool
 
         /// Cap on how many source points are used for correspondence search each iteration (the
-        /// same fixed sample is reused every iteration, for determinism and speed — resampling
+        /// same fixed sample is reused every iteration, for determinism and speed; resampling
         /// per iteration isn't necessary for convergence and would cost determinism for no
         /// accuracy benefit at a fixed sample size).
         public var maxSamples: Int

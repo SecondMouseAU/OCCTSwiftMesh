@@ -1,4 +1,4 @@
-// FittedPrimitive.swift — the surface a segmented region best fits, with its measured
+// FittedPrimitive.swift: the surface a segmented region best fits, with its measured
 // deviation from the source triangles.
 
 /// A primitive surface fitted to a mesh region.
@@ -21,7 +21,9 @@ public struct FittedPrimitive: Sendable, Equatable {
     /// Fraction of the region's vertices within `max(2 · residualRMS, 1e-4)` of the surface.
     public let inlierRatio: Double
 
-    public init(kind: Kind, params: [Double], residualRMS: Double, residualMax: Double, inlierRatio: Double) {
+    public init(
+        kind: Kind, params: [Double], residualRMS: Double, residualMax: Double, inlierRatio: Double
+    ) {
         self.kind = kind
         self.params = params
         self.residualRMS = residualRMS

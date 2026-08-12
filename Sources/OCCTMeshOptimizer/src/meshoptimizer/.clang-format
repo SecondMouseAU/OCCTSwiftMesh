@@ -1,0 +1,11 @@
+# Vendored meshoptimizer v1.1 (MIT, https://github.com/zeux/meshoptimizer) --
+# not this repo's own style, and not to be reformatted. docs/VENDORING.md is
+# explicit: "Don't modify vendored sources. Bug fixes go upstream first."
+#
+# clang-format resolves the nearest .clang-format by walking up from the
+# target file, so without this override an editor/IDE would pick up
+# Sources/OCCTMeshOptimizer/.clang-format (OCCT style) for files in this
+# subtree too. DisableFormat stops that: this subtree is intentionally inert
+# to clang-format, same treatment the ecosystem gives vendored OCCT source
+# itself.
+DisableFormat: true

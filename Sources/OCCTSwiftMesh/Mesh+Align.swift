@@ -1,27 +1,28 @@
-// Mesh+Align.swift — point-to-plane ICP registration with PCA pre-align and normal-space
+// Mesh+Align.swift: point-to-plane ICP registration with PCA pre-align and normal-space
 // sampling.
 //
 // Ported from the classic ICP literature: Chen & Medioni's point-to-plane objective (converges
 // far faster than point-to-point on engineering surfaces), Rusinkiewicz & Levoy's normal-space
 // sampling ("Efficient Variants of the ICP Algorithm", 2001), and Low's linearized point-to-plane
-// solve ("Linear Least-Squares Optimization for Point-to-Plane ICP", 2004). Pure Swift + simd —
+// solve ("Linear Least-Squares Optimization for Point-to-Plane ICP", 2004). Pure Swift + simd:
 // no OCCT kernel calls, no vendored library.
 //
-// Welds both meshes internally (for per-point normals and a deduplicated point cloud) — like
-// `segmented(_:)`, not like `triangleAdjacency()` — since alignment is a composite, mesh-level
+// Welds both meshes internally (for per-point normals and a deduplicated point cloud); like
+// `segmented(_:)`, not like `triangleAdjacency()`; since alignment is a composite, mesh-level
 // operation, not a low-level connectivity primitive the caller is expected to pre-weld for.
 
 import Foundation
-import simd
 import OCCTSwift
+import simd
 
 extension Mesh {
 
     /// Rigid-transform registration of this (SOURCE) mesh onto `reference`, via point-to-plane
-    /// ICP. Returns `nil` if either mesh has too few points to register (fewer than 3 after
-    /// welding).
+    /// ICP.
     ///
-    /// `result.transform` maps THIS mesh's original vertex positions into `reference`'s frame.
+    /// Returns `nil` if either mesh has too few points to register (fewer than 3 after
+    /// welding). `result.transform` maps THIS mesh's original vertex positions into the frame
+    /// of `reference`.
     public func aligned(to reference: Mesh, options: AlignOptions = .init()) -> AlignResult? {
         let sourceWelded = welded()
         let refWelded = reference.welded()
@@ -32,27 +33,37 @@ extension Mesh {
         let sourceNormals = sourceWelded.vertexNormals().map { SIMD3<Double>($0) }
         let refNormals = refWelded.vertexNormals().map { SIMD3<Double>($0) }
 
-        var lo = refPoints[0], hi = refPoints[0]
-        for p in refPoints { lo = simd_min(lo, p); hi = simd_max(hi, p) }
+        var lo = refPoints[0]
+        var hi = refPoints[0]
+        for p in refPoints {
+            lo = simd_min(lo, p)
+            hi = simd_max(hi, p)
+        }
         let bboxDiag = simd_length(hi - lo)
         let distanceCap = options.correspondenceDistanceCap ?? max(1e-9, 0.15 * bboxDiag)
 
         let tree = KDTree3(points: refPoints)
 
         let sampleCount = max(0, min(options.maxSamples, sourcePoints.count))
-        let sampleIndices = options.normalSpaceSampling
+        let sampleIndices =
+            options.normalSpaceSampling
             ? Mesh.normalSpaceSample(normals: sourceNormals, count: sampleCount)
             : Mesh.uniformSample(total: sourcePoints.count, take: sampleCount)
         let samplePoints = sampleIndices.map { sourcePoints[$0] }
 
-        var pose = options.preAlign
+        var pose =
+            options.preAlign
             ? Mesh.pcaPrealign(source: sourcePoints, reference: refPoints, tree: tree)
             : matrix_identity_double4x4
 
-        func correspondences(at pose: simd_double4x4) -> [(src: SIMD3<Double>, ref: SIMD3<Double>, normal: SIMD3<Double>)] {
+        func correspondences(at pose: simd_double4x4) -> [(
+            src: SIMD3<Double>, ref: SIMD3<Double>, normal: SIMD3<Double>
+        )] {
             samplePoints.compactMap { p in
                 let tp = Mesh.apply(pose, p)
-                guard let (idx, dist) = tree.nearest(to: tp), dist <= distanceCap else { return nil }
+                guard let (idx, dist) = tree.nearest(to: tp), dist <= distanceCap else {
+                    return nil
+                }
                 return (tp, refPoints[idx], refNormals[idx])
             }
         }
@@ -80,8 +91,12 @@ extension Mesh {
 
             // Trimmed ICP: keep the best (1 - trimFraction) of correspondences by residual
             // magnitude. DETERMINISM: tie-break by original correspondence order.
-            let keepCount = max(6, Int((Double(corr.count) * (1 - max(0, min(0.9, options.trimFraction)))).rounded()))
-            let order = residuals.indices.sorted { residuals[$0] != residuals[$1] ? residuals[$0] < residuals[$1] : $0 < $1 }
+            let keepCount = max(
+                6,
+                Int((Double(corr.count) * (1 - max(0, min(0.9, options.trimFraction)))).rounded()))
+            let order = residuals.indices.sorted {
+                residuals[$0] != residuals[$1] ? residuals[$0] < residuals[$1] : $0 < $1
+            }
             let kept = order.prefix(min(keepCount, order.count)).map { corr[$0] }
             guard kept.count >= 6 else { break }
 
@@ -105,29 +120,39 @@ extension Mesh {
             let r = SIMD3<Double>(sol[0], sol[1], sol[2])
             let t = SIMD3<Double>(sol[3], sol[4], sol[5])
             let angle = simd_length(r)
-            let rotation = angle > 1e-14 ? Mesh.rodrigues(axis: r / angle, angle: angle) : matrix_identity_double3x3
+            let rotation =
+                angle > 1e-14
+                ? Mesh.rodrigues(axis: r / angle, angle: angle) : matrix_identity_double3x3
             let incremental = Mesh.rigidTransform(rotation: rotation, translation: t)
             pose = simd_mul(incremental, pose)
         }
 
         // Report the residual at the FINAL pose (post-last-increment), not the pose one step
-        // prior — a fresh correspondence pass, cheap relative to the iterations already run.
+        // prior: a fresh correspondence pass, cheap relative to the iterations already run.
         let finalCorr = correspondences(at: pose)
-        let finalRMS = finalCorr.isEmpty
+        let finalRMS =
+            finalCorr.isEmpty
             ? lastRMS
-            : (finalCorr.map { let d = simd_dot($0.normal, $0.src - $0.ref); return d * d }.reduce(0, +) / Double(finalCorr.count)).squareRoot()
+            : (finalCorr.map {
+                let d = simd_dot($0.normal, $0.src - $0.ref)
+                return d * d
+            }.reduce(0, +) / Double(finalCorr.count)).squareRoot()
 
-        return AlignResult(transform: pose, residualRMS: finalRMS, iterations: iterations, converged: converged)
+        return AlignResult(
+            transform: pose, residualRMS: finalRMS, iterations: iterations, converged: converged)
     }
 
     // MARK: - PCA pre-align
 
     /// Centroid + principal-axis pre-alignment, trying all 4 orientation-preserving sign
-    /// combinations of the two dominant axes (PCA eigenvectors have no inherent sign — the
+    /// combinations of the two dominant axes (PCA eigenvectors have no inherent sign, the
     /// third axis is always re-derived via cross product to keep an orthonormal, right-handed
-    /// frame) and keeping whichever gives the lowest quick correspondence residual. Deterministic:
-    /// candidates are tried in a fixed order and ties broken by that same order.
-    static func pcaPrealign(source: [SIMD3<Double>], reference: [SIMD3<Double>], tree: KDTree3) -> simd_double4x4 {
+    /// frame) and keeping whichever gives the lowest quick correspondence residual.
+    ///
+    /// Deterministic: candidates are tried in a fixed order and ties broken by that same order.
+    static func pcaPrealign(source: [SIMD3<Double>], reference: [SIMD3<Double>], tree: KDTree3)
+        -> simd_double4x4
+    {
         let (srcCov, srcCentroid) = Linalg.covariance(source)
         let (refCov, refCentroid) = Linalg.covariance(reference)
         let (_, srcVecs) = Linalg.eigenSymmetric3(srcCov)
@@ -145,17 +170,22 @@ extension Mesh {
 
         var best: (transform: simd_double4x4, score: Double)?
         for (s0, s1) in signCombos {
-            let a0 = s0 * srcA0, a1 = s1 * srcA1
+            let a0 = s0 * srcA0
+            let a1 = s1 * srcA1
             let srcBasis = simd_double3x3(columns: (a0, a1, simd_cross(a0, a1)))
             let rotation = simd_mul(refBasis, srcBasis.transpose)
             let translation = refCentroid - simd_mul(rotation, srcCentroid)
             let candidate = Mesh.rigidTransform(rotation: rotation, translation: translation)
 
-            var sumDist = 0.0, n = 0
+            var sumDist = 0.0
+            var n = 0
             var i = 0
             while i < source.count {
                 let tp = Mesh.apply(candidate, source[i])
-                if let (_, dist) = tree.nearest(to: tp) { sumDist += dist; n += 1 }
+                if let (_, dist) = tree.nearest(to: tp) {
+                    sumDist += dist
+                    n += 1
+                }
                 i += sampleStride
             }
             let score = n > 0 ? sumDist / Double(n) : .infinity
@@ -168,14 +198,17 @@ extension Mesh {
 
     /// Sample `count` indices proportional to normal-direction diversity: bucket by normal
     /// direction (a coarse lat/long grid), then round-robin across NON-EMPTY buckets in a fixed
-    /// order so every direction gets comparable representation regardless of population size —
+    /// order so every direction gets comparable representation regardless of population size,
     /// the flat majority of a mostly-planar surface doesn't crowd out a small feature's rare
-    /// normal direction. Deterministic (fixed bucket order, in-bucket order by point index).
+    /// normal direction.
+    ///
+    /// Deterministic (fixed bucket order, in-bucket order by point index).
     static func normalSpaceSample(normals: [SIMD3<Double>], count: Int) -> [Int] {
         guard count > 0, !normals.isEmpty else { return [] }
         guard count < normals.count else { return Array(0..<normals.count) }
 
-        let lonBuckets = 12, latBuckets = 6
+        let lonBuckets = 12
+        let latBuckets = 6
         func bucket(_ n: SIMD3<Double>) -> Int {
             let len = simd_length(n)
             let u = len > 1e-12 ? n / len : SIMD3<Double>(0, 0, 1)
@@ -236,7 +269,9 @@ extension Mesh {
         return SIMD3<Double>(v.x, v.y, v.z)
     }
 
-    static func rigidTransform(rotation: simd_double3x3, translation: SIMD3<Double>) -> simd_double4x4 {
+    static func rigidTransform(rotation: simd_double3x3, translation: SIMD3<Double>)
+        -> simd_double4x4
+    {
         let c0 = SIMD4<Double>(rotation.columns.0, 0)
         let c1 = SIMD4<Double>(rotation.columns.1, 0)
         let c2 = SIMD4<Double>(rotation.columns.2, 0)
@@ -247,8 +282,12 @@ extension Mesh {
     /// Rotation matrix for a right-handed rotation of `angle` radians about unit `axis`
     /// (Rodrigues' rotation formula).
     static func rodrigues(axis: SIMD3<Double>, angle: Double) -> simd_double3x3 {
-        let c = cos(angle), s = sin(angle), t = 1 - c
-        let x = axis.x, y = axis.y, z = axis.z
+        let c = cos(angle)
+        let s = sin(angle)
+        let t = 1 - c
+        let x = axis.x
+        let y = axis.y
+        let z = axis.z
         let col0 = SIMD3<Double>(c + t * x * x, s * z + t * x * y, -s * y + t * x * z)
         let col1 = SIMD3<Double>(-s * z + t * y * x, c + t * y * y, s * x + t * y * z)
         let col2 = SIMD3<Double>(s * y + t * z * x, -s * x + t * z * y, c + t * z * z)

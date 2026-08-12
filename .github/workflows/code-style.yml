@@ -1,0 +1,72 @@
+name: code-style
+
+# Rollout of the ecosystem's code-style policy here; see
+# docs/code-style-policy-proposal-2026-08.md in the `ecosystem` repo for the
+# full rationale, and okf/policies/code-style.md for this repo's own policy.
+#
+# Full sweep, not a gradual-adoption manifest: ~6,600 Swift lines across ~43
+# files (small enough to sweep into compliance in one PR, matching the
+# OCCTSwiftScripts pilot's shape) plus a first-party C++ bridge measured at
+# only 2 real files (include/OCCTMeshOptimizer.h,
+# src/OCCTMeshOptimizerBridge.cpp; the other 20 files under
+# src/meshoptimizer/ are vendored third-party meshoptimizer source, out of
+# scope per docs/VENDORING.md's "don't modify vendored sources", the same
+# treatment the ecosystem gives vendored OCCT source elsewhere).
+#
+# swift-format, SwiftLint, and clang-format are all blocking, whole-tree:
+# formatting has no judgment call in it once a file complies, and there is no
+# pre-existing backlog left to grandfather. The comment-ratio check is
+# report-only by design (see the script's own header) and never fails.
+#
+# Pure text analysis, no OCCT build needed: still a macOS runner, since that
+# is where swift-format/swiftlint/clang-format are all readily available via
+# Homebrew, with none of a real build's dependency-resolution time.
+
+on:
+  push:
+    paths:
+      - 'Sources/**'
+      - 'Tests/**'
+      - '.swift-format'
+      - '.swiftlint.yml'
+      - 'Scripts/comment-ratio-check.sh'
+      - '.github/workflows/code-style.yml'
+  pull_request:
+    paths:
+      - 'Sources/**'
+      - 'Tests/**'
+      - '.swift-format'
+      - '.swiftlint.yml'
+      - 'Scripts/comment-ratio-check.sh'
+      - '.github/workflows/code-style.yml'
+  workflow_dispatch:
+
+jobs:
+  code-style:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install swift-format, SwiftLint, clang-format
+        run: brew install swift-format swiftlint clang-format
+
+      - name: swift-format lint --strict
+        run: |
+          find Sources Tests -name '*.swift' -print0 \
+            | xargs -0 swift-format lint --strict --configuration .swift-format
+
+      - name: swiftlint lint --strict
+        if: '!cancelled()'
+        run: swiftlint lint --strict --config .swiftlint.yml
+
+      - name: clang-format check (first-party OCCTMeshOptimizer bridge only)
+        if: '!cancelled()'
+        run: |
+          clang-format --dry-run --Werror -style=file \
+            Sources/OCCTMeshOptimizer/include/OCCTMeshOptimizer.h \
+            Sources/OCCTMeshOptimizer/src/OCCTMeshOptimizerBridge.cpp
+
+      - name: Comment:code ratio (report-only, never fails)
+        if: '!cancelled()'
+        run: Scripts/comment-ratio-check.sh

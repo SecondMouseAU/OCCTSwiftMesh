@@ -1,25 +1,25 @@
-// CrossSection.swift — planar slicing of a mesh into closed contours.
+// CrossSection.swift: planar slicing of a mesh into closed contours.
 //
 // This is the operation a 3D-printer slicer performs to find each layer's
 // perimeters: intersect every triangle with a cut plane, chain the resulting
 // segments end-to-end into closed loops, then classify them by nesting. For a
 // hollow / thin-walled part the outer wall and inner wall come back as two
-// SEPARATE, oppositely-wound, nested loops — and any pocket or window cut on
-// the section is its own loop — so "which edge is inside vs outside" falls out
+// SEPARATE, oppositely-wound, nested loops; and any pocket or window cut on
+// the section is its own loop; so "which edge is inside vs outside" falls out
 // of containment rather than guesswork.
 //
 // Pure geometry: works on `Mesh.vertices` / `Mesh.indices` with no OCCT kernel
 // calls, so it is robust on the open and mildly non-manifold meshes that raw
 // scan/STL bodies actually are (where sewing to a B-Rep first would fail).
 
-import simd
 import OCCTSwift
+import simd
 
 // MARK: - Plane
 
 /// An oriented cut plane: a point on the plane and its normal.
 ///
-/// The normal need not be unit length — `Mesh.crossSection` normalizes it.
+/// The normal need not be unit length; `Mesh.crossSection` normalizes it.
 public struct CutPlane: Sendable {
     /// A point that lies on the plane.
     public var point: SIMD3<Double>
@@ -49,8 +49,9 @@ public struct MeshContour: Sendable {
     /// Ordered loop points in the section plane's `(u, v)` coordinates, millimetres.
     public var points: [SIMD2<Double>]
 
-    /// Shoelace signed area in plane coordinates (CCW positive). After
-    /// `crossSection` returns, orientation is normalized so an even `depth`
+    /// Shoelace signed area in plane coordinates (CCW positive).
+    ///
+    /// After `crossSection` returns, orientation is normalized so an even `depth`
     /// (solid boundary) is CCW (> 0) and an odd `depth` (hole) is CW (< 0).
     public var signedArea: Double
 
@@ -73,7 +74,8 @@ public struct MeshContour: Sendable {
         guard points.count > 1 else { return 0 }
         var sum = 0.0
         for i in points.indices {
-            let a = points[i], b = points[(i + 1) % points.count]
+            let a = points[i]
+            let b = points[(i + 1) % points.count]
             sum += simd_distance(a, b)
         }
         return sum
@@ -81,8 +83,12 @@ public struct MeshContour: Sendable {
 
     /// Axis-aligned bounds in plane coordinates: `(min, max)`.
     public var bounds: (min: SIMD2<Double>, max: SIMD2<Double>) {
-        var lo = points.first ?? .zero, hi = points.first ?? .zero
-        for p in points { lo = simd_min(lo, p); hi = simd_max(hi, p) }
+        var lo = points.first ?? .zero
+        var hi = points.first ?? .zero
+        for p in points {
+            lo = simd_min(lo, p)
+            hi = simd_max(hi, p)
+        }
         return (lo, hi)
     }
 }
@@ -90,7 +96,9 @@ public struct MeshContour: Sendable {
 // MARK: - Cross-section
 
 /// A planar cross-section of a mesh: the plane basis plus every closed loop the
-/// plane cuts. Map 2D loop points back to 3D with `worldPoint(_:)`.
+/// plane cuts.
+///
+/// Map 2D loop points back to 3D with `worldPoint(_:)`.
 public struct MeshCrossSection: Sendable {
     /// Plane origin (the `(u, v) = (0, 0)` point in world space).
     public var origin: SIMD3<Double>
@@ -102,12 +110,13 @@ public struct MeshCrossSection: Sendable {
     public var vAxis: SIMD3<Double>
     /// Closed loops, classified by nesting depth.
     public var contours: [MeshContour]
-    /// Open polylines — produced where the plane exits the mesh through a
+    /// Open polylines; produced where the plane exits the mesh through a
     /// boundary edge (e.g. cutting across an open end or through a window rim).
+    ///
     /// Empty for a clean section between features.
     public var openPaths: [[SIMD2<Double>]]
 
-    /// The outermost loops (nesting depth 0) — the solid's outer boundary.
+    /// The outermost loops (nesting depth 0): the solid's outer boundary.
     public var outerContours: [MeshContour] { contours.filter { $0.depth == 0 } }
 
     /// Map a plane `(u, v)` coordinate back to a world-space point.
@@ -118,10 +127,10 @@ public struct MeshCrossSection: Sendable {
 
 // MARK: - Slicing
 
-public extension Mesh {
+extension Mesh {
 
     /// Slice the mesh with a plane and return the closed contours where the
-    /// plane cuts the surface — a 3D-printer slicer's perimeter step.
+    /// plane cuts the surface: a 3D-printer slicer's perimeter step.
     ///
     /// Intersection points are keyed by the mesh edge they lie on, so the two
     /// triangles sharing an edge weld exactly and loops chain without
@@ -136,7 +145,9 @@ public extension Mesh {
     ///     (handles unwelded STL). `0` (default) auto-derives `1e-6 ×` the
     ///     mesh's bounding-box diagonal.
     /// - Returns: the section, or `nil` if the plane misses the mesh entirely.
-    func crossSection(plane: CutPlane, minLoopArea: Double = 0, weld: Double = 0) -> MeshCrossSection? {
+    public func crossSection(plane: CutPlane, minLoopArea: Double = 0, weld: Double = 0)
+        -> MeshCrossSection?
+    {
         let verts = vertices
         let idx = indices
         guard verts.count >= 3, idx.count >= 3 else { return nil }
@@ -145,9 +156,12 @@ public extension Mesh {
         guard n.x.isFinite, simd_length(n) > 0.5 else { return nil }
         // Build an in-plane basis. Pick the world axis least aligned with n.
         let a = abs(n)
-        let seed: SIMD3<Double> = (a.x <= a.y && a.x <= a.z) ? SIMD3(1, 0, 0)
-                                : (a.y <= a.z)               ? SIMD3(0, 1, 0)
-                                :                              SIMD3(0, 0, 1)
+        let seed: SIMD3<Double> =
+            (a.x <= a.y && a.x <= a.z)
+            ? SIMD3(1, 0, 0)
+            : (a.y <= a.z)
+                ? SIMD3(0, 1, 0)
+                : SIMD3(0, 0, 1)
         let u = simd_normalize(simd_cross(n, seed))
         let v = simd_cross(n, u)
         let origin = plane.point
@@ -156,10 +170,12 @@ public extension Mesh {
         let nf = SIMD3<Float>(Float(n.x), Float(n.y), Float(n.z))
         let of = SIMD3<Float>(Float(origin.x), Float(origin.y), Float(origin.z))
         var dist = [Float](repeating: 0, count: verts.count)
-        var lo = verts[0], hi = verts[0]
+        var lo = verts[0]
+        var hi = verts[0]
         for i in verts.indices {
             dist[i] = simd_dot(verts[i] - of, nf)
-            lo = simd_min(lo, verts[i]); hi = simd_max(hi, verts[i])
+            lo = simd_min(lo, verts[i])
+            hi = simd_max(hi, verts[i])
         }
         let diag = Double(simd_length(hi - lo))
 
@@ -175,19 +191,26 @@ public extension Mesh {
         // the model, far below any real wall thickness, so distinct points stay
         // distinct.
         let cell = weld > 0 ? weld : max(1e-9, 1e-6 * diag)
-        struct GridKey: Hashable { var x: Int64; var y: Int64; var z: Int64 }
+        struct GridKey: Hashable {
+            var x: Int64
+            var y: Int64
+            var z: Int64
+        }
         var pointForCell: [GridKey: Int] = [:]
         var pts: [SIMD2<Double>] = []
         func crossing(_ va: UInt32, _ vb: UInt32) -> Int {
-            let da = dist[Int(va)], db = dist[Int(vb)]
-            let t = Double(da / (da - db))            // da, db straddle 0 here
-            let pa = verts[Int(va)], pb = verts[Int(vb)]
+            let da = dist[Int(va)]
+            let db = dist[Int(vb)]
+            let t = Double(da / (da - db))  // da, db straddle 0 here
+            let pa = verts[Int(va)]
+            let pb = verts[Int(vb)]
             let pad = SIMD3<Double>(Double(pa.x), Double(pa.y), Double(pa.z))
             let pbd = SIMD3<Double>(Double(pb.x), Double(pb.y), Double(pb.z))
             let w = pad + (pbd - pad) * t
-            let key = GridKey(x: Int64((w.x / cell).rounded()),
-                              y: Int64((w.y / cell).rounded()),
-                              z: Int64((w.z / cell).rounded()))
+            let key = GridKey(
+                x: Int64((w.x / cell).rounded()),
+                y: Int64((w.y / cell).rounded()),
+                z: Int64((w.z / cell).rounded()))
             if let p = pointForCell[key] { return p }
             let rel = w - origin
             let uv = SIMD2(simd_dot(rel, u), simd_dot(rel, v))
@@ -209,12 +232,14 @@ public extension Mesh {
         var touched = false
         var tri = 0
         while tri + 2 < idx.count {
-            let i0 = idx[tri], i1 = idx[tri + 1], i2 = idx[tri + 2]
+            let i0 = idx[tri]
+            let i1 = idx[tri + 1]
+            let i2 = idx[tri + 2]
             tri += 3
             let s0 = positive(dist[Int(i0)])
             let s1 = positive(dist[Int(i1)])
             let s2 = positive(dist[Int(i2)])
-            if s0 == s1 && s1 == s2 { continue }   // entirely on one side
+            if s0 == s1 && s1 == s2 { continue }  // entirely on one side
             touched = true
             // The two edges whose endpoints differ in sign are the crossed ones.
             var crossPts: [Int] = []
@@ -228,7 +253,8 @@ public extension Mesh {
         // Walk the segment graph into loops (closed) and paths (open ends).
         var visitedSeg = Set<UInt64>()
         @inline(__always) func segKey(_ p: Int, _ q: Int) -> UInt64 {
-            let lo = UInt64(min(p, q)), hi = UInt64(max(p, q))
+            let lo = UInt64(min(p, q))
+            let hi = UInt64(max(p, q))
             return (hi << 32) | lo
         }
         var loops: [[Int]] = []
@@ -244,13 +270,14 @@ public extension Mesh {
                 let nbrs = neighbors(current)
                 var next: Int? = nil
                 for cand in nbrs where !visitedSeg.contains(segKey(current, cand)) {
-                    next = cand; break
+                    next = cand
+                    break
                 }
                 guard let nxt = next else { break }
                 visitedSeg.insert(segKey(current, nxt))
                 path.append(nxt)
                 current = nxt
-                if nxt == start { break }   // closed
+                if nxt == start { break }  // closed
             }
             if path.count >= 2 {
                 if path.first == path.last && path.count >= 4 {
@@ -262,7 +289,11 @@ public extension Mesh {
         }
 
         let degree1 = adjacency.keys.filter { (adjacency[$0]?.count ?? 0) == 1 }.sorted()
-        for s in degree1 { if neighbors(s).contains(where: { !visitedSeg.contains(segKey(s, $0)) }) { walk(from: s, preferOpen: true) } }
+        for s in degree1 {
+            if neighbors(s).contains(where: { !visitedSeg.contains(segKey(s, $0)) }) {
+                walk(from: s, preferOpen: true)
+            }
+        }
         // Remaining: closed loops. Seed deterministically by lowest point index.
         for s in adjacency.keys.sorted() {
             while neighbors(s).contains(where: { !visitedSeg.contains(segKey(s, $0)) }) {
@@ -274,7 +305,8 @@ public extension Mesh {
         func shoelace(_ ring: [SIMD2<Double>]) -> Double {
             var s = 0.0
             for i in ring.indices {
-                let a = ring[i], b = ring[(i + 1) % ring.count]
+                let a = ring[i]
+                let b = ring[(i + 1) % ring.count]
                 s += a.x * b.y - b.x * a.y
             }
             return s * 0.5
@@ -293,7 +325,8 @@ public extension Mesh {
             var inside = false
             var j = ring.count - 1
             for i in ring.indices {
-                let a = ring[i], b = ring[j]
+                let a = ring[i]
+                let b = ring[j]
                 if (a.y > p.y) != (b.y > p.y) {
                     let x = a.x + (p.y - a.y) / (b.y - a.y) * (b.x - a.x)
                     if p.x < x { inside.toggle() }
@@ -335,12 +368,14 @@ public extension Mesh {
         }
 
         let openUV = openPaths.map { $0.map { pts[$0] } }
-        return MeshCrossSection(origin: origin, normal: n, uAxis: u, vAxis: v,
-                                contours: contours, openPaths: openUV)
+        return MeshCrossSection(
+            origin: origin, normal: n, uAxis: u, vAxis: v,
+            contours: contours, openPaths: openUV)
     }
 
-    /// A stack of evenly-spaced cross-sections along an axis — a slicer's layer
-    /// stack. Sections that miss the mesh are skipped.
+    /// A stack of evenly-spaced cross-sections along an axis: a slicer's layer stack.
+    ///
+    /// Sections that miss the mesh are skipped.
     ///
     /// - Parameters:
     ///   - axis: slicing direction (normalized internally).
@@ -348,16 +383,25 @@ public extension Mesh {
     ///   - spacing: distance between successive section planes.
     ///   - margin: inset from each end of the mesh's extent along the axis, so the
     ///     first/last slice doesn't sit exactly on an end cap (default `spacing/2`).
-    func crossSections(axis: SIMD3<Double>, through point: SIMD3<Double>,
-                       spacing: Double, margin: Double? = nil) -> [MeshCrossSection] {
+    /// - Returns: one `MeshCrossSection` per slice plane that intersects the mesh, ordered
+    ///   along the axis.
+    public func crossSections(
+        axis: SIMD3<Double>, through point: SIMD3<Double>,
+        spacing: Double, margin: Double? = nil
+    ) -> [MeshCrossSection] {
         guard spacing > 0 else { return [] }
         let n = simd_normalize(axis)
         let nf = SIMD3<Float>(Float(n.x), Float(n.y), Float(n.z))
         let pf = SIMD3<Float>(Float(point.x), Float(point.y), Float(point.z))
         let verts = vertices
         guard !verts.isEmpty else { return [] }
-        var lo = Float.greatestFiniteMagnitude, hi = -Float.greatestFiniteMagnitude
-        for vtx in verts { let d = simd_dot(vtx - pf, nf); lo = min(lo, d); hi = max(hi, d) }
+        var lo = Float.greatestFiniteMagnitude
+        var hi = -Float.greatestFiniteMagnitude
+        for vtx in verts {
+            let d = simd_dot(vtx - pf, nf)
+            lo = min(lo, d)
+            hi = max(hi, d)
+        }
         let m = margin ?? (spacing / 2)
         var t = Double(lo) + m
         let end = Double(hi) - m

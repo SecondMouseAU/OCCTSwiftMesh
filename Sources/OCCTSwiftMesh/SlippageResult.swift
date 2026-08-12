@@ -1,4 +1,4 @@
-// SlippageResult.swift — output of Mesh.slippage(forTriangles:maxSamples:).
+// SlippageResult.swift: output of Mesh.slippage(forTriangles:maxSamples:).
 
 import simd
 
@@ -26,15 +26,19 @@ public struct SlippageResult: Sendable, Equatable {
     public let pitch: Double?
 
     /// The 6 eigenvalue ratios of the slippage constraint covariance, ascending, each divided
-    /// by the largest (so the last entry is always `1`). Near-zero entries are the slippable
-    /// (rigid, surface-preserving) motions that drove the classification.
+    /// by the largest (so the last entry is always `1`).
+    ///
+    /// Near-zero entries are the slippable (rigid, surface-preserving) motions that drove the
+    /// classification.
     public let eigenRatios: [Double]
 
     /// How cleanly the slippable eigenvalues separate from the non-slippable ones, in `[0, 1]`.
     public let confidence: Double
 
-    public init(kind: Kind, axisPoint: SIMD3<Double>?, axisDirection: SIMD3<Double>?, pitch: Double?,
-                eigenRatios: [Double], confidence: Double) {
+    public init(
+        kind: Kind, axisPoint: SIMD3<Double>?, axisDirection: SIMD3<Double>?, pitch: Double?,
+        eigenRatios: [Double], confidence: Double
+    ) {
         self.kind = kind
         self.axisPoint = axisPoint
         self.axisDirection = axisDirection
