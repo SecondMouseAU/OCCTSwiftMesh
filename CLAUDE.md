@@ -71,7 +71,7 @@ swift test                 # Run all tests
 swift test --filter "..."  # Run a specific suite
 ```
 
-The package depends on OCCTSwift via SPM (currently pinned to `from: "0.156.0"`). First build pulls OCCTSwift's xcframework; subsequent builds are incremental.
+The package depends on OCCTSwift via SPM (currently floored at `from: "3.0.0"`). First build pulls OCCTSwift's xcframework; subsequent builds are incremental.
 
 ### Bumping the OCCTSwift dependency
 

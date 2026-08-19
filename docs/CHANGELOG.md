@@ -2,6 +2,39 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## v1.7.5: repin OCCTSwift 3.0.0
+
+Repin the OCCTSwift floor from **2.0.0** to **3.0.0**. OCCTSwift's v3.0.0
+([`docs/SEMVER.md#v300`](https://github.com/SecondMouseAU/OCCTSwift/blob/v3.0.0/docs/SEMVER.md#v300))
+is a Rule 2 major on a much smaller surface than v2.0.0. OCCT itself does not move: the kernel
+stays at 8.0.1, rebuilt as `v3.0.0-kernel.1` to carry two patches the v2.0.0 asset was missing
+([OCCTSwift#905](https://github.com/SecondMouseAU/OCCTSwift/issues/905),
+[OCCTSwift#913](https://github.com/SecondMouseAU/OCCTSwift/issues/913)).
+
+Three breaks, all compile errors, and none of them reachable from this package:
+
+1. `Selector.SubShapeType.compsolid` renamed `.compSolid`
+   ([OCCTSwift#844](https://github.com/SecondMouseAU/OCCTSwift/issues/844)): zero hits.
+2. `Shape.ShapeFilterType.RawValue` moving from `Int32` to `Int` (same issue, since
+   `ShapeFilterType` becomes a `ShapeType` typealias): zero hits.
+3. `Shape.bounds`, `Shape.size`, `Shape.center`, `Wire.bounds`, `Edge.bounds`, `Face.bounds` and
+   `Face.exactBounds` becoming Optional
+   ([OCCTSwift#943](https://github.com/SecondMouseAU/OCCTSwift/issues/943)), so that a void
+   bounding box is no longer fabricated as `(0,0,0)-(0,0,0)` and confusable with a genuine
+   zero-size shape at the world origin. This is the break that bites downstream, and it touches
+   nothing here.
+
+Re-audited from scratch rather than inherited from the v1.7.3 note below, which examined the
+sub-shape-enumeration and mass-property families and said nothing about the bounding-box
+accessors. This package reads a bounding box off no OCCT type at all: its entire contact surface
+with OCCT topology is a single test fixture calling `Shape.sphere(radius:)` and then
+`.mesh(linearDeflection:angularDeflection:)`. The 40 candidate call sites counted by grep at
+issue-filing time resolve to `MeshContour.bounds` (this package's own planar contour type, still
+non-Optional and unaffected) and to `.center`/`.size` struct fields inside the vendored
+meshoptimizer C++, neither of which is an OCCTSwift surface. Confirmed by the compiler: a clean
+`swift build` and full `swift test` against a real v3.0.0 sibling checkout, with zero source
+changes. No API or behaviour change here.
+
 ## v1.7.4 — fix a type-checker timeout in `fitCylinder`
 
 `PrimitiveFitter.fitCylinder`'s residuals expression (`abs(((...) + (...)).squareRoot() - r)`
