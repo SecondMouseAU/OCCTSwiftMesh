@@ -4,9 +4,9 @@ All notable changes to OCCTSwiftMesh.
 
 ## v1.7.6-beta.1: repin OCCTSwift 4.0.0-beta.4
 
-**Pre-release.** A consumer only gets this by naming it; the stable line stays at v1.7.5.
+**Pre-release, pinned exactly to OCCTSwift 4.0.0-beta.4.** A consumer only gets this by naming it; the stable line stays at v1.7.5.
 
-Moves the OCCTSwift floor from `3.0.0` to `4.0.0-beta.4`, so a package graph that resolves OCCTSwift 4.0.0
+Moves the OCCTSwift dependency from `from: "3.0.0"` to `exact: "4.0.0-beta.4"`. Exact, not `from:`, because `v4.0.0-kernel.N` tags are pre-releases of the same package that sort above every beta, so `from: "4.0.0-beta.4"` resolves to the newest kernel tag (main's source) rather than the beta. So a package graph that resolves OCCTSwift 4.0.0
 can include this one. No source change: `swift build --build-tests` is clean against the real beta.4
 checkout and all 133 tests pass unmodified. Nothing in the OCCTSwift 4.0.0 break table
 (`docs/SEMVER.md#v400`) reaches this package's call sites.
