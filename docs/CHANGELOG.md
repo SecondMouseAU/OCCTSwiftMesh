@@ -2,6 +2,16 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## v1.7.6-beta.2 (2026-09-30)
+
+**Pre-release. Same code as v1.7.6-beta.1; use this tag instead.** v1.7.6-beta.1 was cut at `09e0525`, then
+deleted and recreated at `0fa30f7` to fix the OCCTSwift pin (see below). Moving a published tag changes the
+commit a version resolves to, so a consumer who had already resolved beta.1 gets a SwiftPM fingerprint mismatch
+on their next resolve (the same failure reported for OCCTSwiftIO in
+[OCCTSwiftIO#46](https://github.com/SecondMouseAU/OCCTSwiftIO/issues/46)). beta.2 carries the exact same tree as
+the current beta.1 (`0fa30f7`) under a tag that has only ever pointed at one commit. Published tags,
+pre-releases included, are not moved or deleted from here on; a fix ships as the next number.
+
 ## v1.7.6-beta.1: repin OCCTSwift 4.0.0-beta.4
 
 **Pre-release, pinned exactly to OCCTSwift 4.0.0-beta.4.** A consumer only gets this by naming it; the stable line stays at v1.7.5.
