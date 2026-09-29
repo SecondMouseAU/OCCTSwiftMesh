@@ -2,6 +2,15 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## v1.7.6-beta.1: repin OCCTSwift 4.0.0-beta.4
+
+**Pre-release.** A consumer only gets this by naming it; the stable line stays at v1.7.5.
+
+Moves the OCCTSwift floor from `3.0.0` to `4.0.0-beta.4`, so a package graph that resolves OCCTSwift 4.0.0
+can include this one. No source change: `swift build --build-tests` is clean against the real beta.4
+checkout and all 133 tests pass unmodified. Nothing in the OCCTSwift 4.0.0 break table
+(`docs/SEMVER.md#v400`) reaches this package's call sites.
+
 ## v1.7.5: repin OCCTSwift 3.0.0
 
 Repin the OCCTSwift floor from **2.0.0** to **3.0.0**. OCCTSwift's v3.0.0
