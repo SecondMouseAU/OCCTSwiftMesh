@@ -2,6 +2,12 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## v1.7.6-beta.3 (2026-10-10): repin OCCTSwift 4.0.0-beta.5
+
+**Pre-release, pinned exactly to OCCTSwift 4.0.0-beta.5.** A consumer only gets this by naming it; the stable line stays at v1.7.5.
+
+Moves the OCCTSwift dependency from `exact: "4.0.0-beta.4"` to `exact: "4.0.0-beta.5"`. No source change: all 133 tests pass unmodified. Nothing in beta.5's three breaks reaches this package's call sites.
+
 ## v1.7.6-beta.2 (2026-09-30)
 
 **Pre-release. Same code as v1.7.6-beta.1; use this tag instead.** v1.7.6-beta.1 was cut at `09e0525`, then
