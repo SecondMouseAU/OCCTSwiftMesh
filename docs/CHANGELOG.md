@@ -2,7 +2,7 @@
 
 All notable changes to OCCTSwiftMesh.
 
-## v1.7.6 (2026-11-27): repin OCCTSwift 4.0.0
+## v1.7.6 (2026-11-28): repin OCCTSwift 4.0.0
 
 **Stable release of the v1.7.6 line.** Its pre-releases, `v1.7.6-beta.1` to `v1.7.6-beta.4` (entries below), were pinned exactly to OCCTSwift 4.0.0-beta.N and had to be named to be taken; this is the stable tag, taken with `from: "1.7.6"`. It requires OCCTSwift 4.0.0 or later. The 1.7.5 line stays on OCCTSwift 3.
 
