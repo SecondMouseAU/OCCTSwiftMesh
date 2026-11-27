@@ -2,6 +2,10 @@
 
 All notable changes to OCCTSwiftMesh.
 
+## Unreleased: repin OCCTSwift 4.0.0
+
+Moves the OCCTSwift dependency from `exact: "4.0.0-beta.6"` to `from: "4.0.0"`, the first stable 4.x release, so a consumer no longer has to name a pre-release to get this package on OCCTSwift 4. No source change: the package builds with no warning and all 133 tests pass unmodified against OCCTSwift v4.0.0 (OCCT 8.0.2). Nothing in v4.0.0's breaks (`docs/SEMVER.md#v400` in OCCTSwift) reaches this package's call sites, and no test that asserts a triangle or node count needed re-pinning for 8.0.2's BRepMesh movement.
+
 ## v1.7.6-beta.4 (2026-10-17): repin OCCTSwift 4.0.0-beta.6
 
 **Pre-release, pinned exactly to OCCTSwift 4.0.0-beta.6.** A consumer only gets this by naming it; the stable line stays at v1.7.5.
