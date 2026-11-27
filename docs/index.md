@@ -52,7 +52,7 @@ Install via Swift Package Manager:
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/SecondMouseAU/OCCTSwiftMesh.git", from: "1.1.1"),
+    .package(url: "https://github.com/SecondMouseAU/OCCTSwiftMesh.git", from: "1.7.6"),
 ],
 targets: [
     .target(
